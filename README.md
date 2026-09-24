@@ -1,6 +1,6 @@
 # StompWhisperer
 
-A desktop application to browse, manage, and build effect chains on a Zoom MS-50G+ multi-effects pedal over USB MIDI, using the pedal's own built-in effect library — a friendlier alternative to editing patches directly on the device's small screen.
+An application (local web UI) to browse, manage, and build effect chains on a Zoom MS-50G+ multi-effects pedal over USB MIDI, using the pedal's own built-in effect library — a friendlier alternative to editing patches directly on the device's small screen.
 
 ## Status
 
@@ -18,15 +18,21 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   `patch_check`, `download_current_patch`, `download_patch` (CRC32-verified).
 - CLI (`stomp-whisperer info` / `stomp-whisperer current`) confirmed working live:
   100 patches, 10 banks, 848 bytes/patch; current patch downloads with a valid checksum.
+- `stomp_whisperer.patch`: dependency-free PTCF patch parser (name, version, target,
+  effect IDs, raw chunks). Unit-tested with synthetic data; **not yet verified on hardware**.
+- CLI `stomp-whisperer list [--save DIR]`: iterates every slot, prints its name and effect
+  count, and optionally saves raw `.bin` dumps for offline decoding.
 
 **Next steps (in order):**
-1. Add a CLI command to iterate and dump **all** patch slots (not just the current one),
-   decoding at least the patch name from each.
+1. Run `stomp-whisperer list --save dumps/` against the pedal to verify the name decoding
+   and collect real patch binaries.
 2. Start decoding the effect-chain structure inside a patch (which effect modules are
    active, order, parameters) — needed before any write support makes sense.
-3. Build a **PySide6** desktop UI on top of the (still read-only) `Pedal` API — chosen
-   over Textual/Tkinter/web app for native drag-and-drop support when rearranging effect
-   chains across slots.
+3. Build a lightweight **local web UI** on top of the (still read-only) `Pedal` API:
+   a small FastAPI + uvicorn server (`stomp-whisperer serve`) that owns the MIDI
+   connection, serving plain HTML/JS with no build step or npm; drag-and-drop for
+   rearranging effect chains via vendored SortableJS. Replaces the earlier PySide6 plan
+   (too heavy).
 4. Only after read support is solid: design patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other
    Zoom models, see Known Risks below).
