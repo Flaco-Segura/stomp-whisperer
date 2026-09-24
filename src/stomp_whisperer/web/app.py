@@ -16,6 +16,14 @@ STATIC_DIR = Path(__file__).parent / "static"
 app = FastAPI(title="StompWhisperer")
 
 
+@app.middleware("http")
+async def revalidate_every_time(request, call_next):
+    # Without this, browsers may keep running a stale app.js after an update.
+    response = await call_next(request)
+    response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
 class PatchCache:
     """Patches read from the pedal, kept until a refresh or a disconnect.
 

@@ -66,3 +66,7 @@ def test_patches_without_pedal(monkeypatch):
     monkeypatch.setattr(web_app, "read_all_slots", no_pedal)
     web_app.cache.clear()
     assert client.get("/api/patches").status_code == 503
+
+
+def test_static_files_are_revalidated():
+    assert client.get("/app.js").headers["cache-control"] == "no-cache"
