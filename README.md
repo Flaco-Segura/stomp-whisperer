@@ -2,6 +2,41 @@
 
 An application (local web UI) to browse, manage, and build effect chains on a Zoom MS-50G+ multi-effects pedal over USB MIDI, using the pedal's own built-in effect library — a friendlier alternative to editing patches directly on the device's small screen.
 
+## Getting Started
+
+First-time setup (see [Technical Requirements](#technical-requirements) for system packages):
+
+```bash
+cd ~/Repos/stomp-whisperer
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### Running the web UI
+
+```bash
+cd ~/Repos/stomp-whisperer
+source .venv/bin/activate
+stomp-whisperer serve
+```
+
+Then open http://127.0.0.1:8000 in your browser. Stop the server with `Ctrl+C`.
+
+- Without activating the virtualenv: `~/Repos/stomp-whisperer/.venv/bin/stomp-whisperer serve`
+- If port 8000 is busy, pick another one: `stomp-whisperer serve --port 8080`
+
+If the pedal is not connected, the page shows a "Conecta tu pedal" modal that closes by
+itself as soon as the pedal is detected over USB.
+
+### CLI commands
+
+```bash
+stomp-whisperer info                 # connect and print patch storage info
+stomp-whisperer current              # dump the currently active patch (hex)
+stomp-whisperer list [--save DIR]    # list every patch slot; optionally save raw .bin dumps
+```
+
 ## Status
 
 Read-only SysEx communication with the pedal is working end-to-end, verified against
