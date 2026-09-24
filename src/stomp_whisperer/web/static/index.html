@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>StompWhisperer</title>
   <link rel="stylesheet" href="style.css">
-  <script src="knob.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -17,24 +16,18 @@
     </div>
   </header>
 
-  <main class="stage">
-    <section class="pedal" aria-labelledby="pedal-title">
-      <div class="pedal-screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <header class="pedal-head">
-        <h2 id="pedal-title">Preview</h2>
-        <p class="pedal-note">Sample controls: not wired to the pedal yet.</p>
+  <main class="workspace">
+    <aside class="patch-list" aria-labelledby="list-title">
+      <header class="panel-head">
+        <h2 id="list-title">Patches</h2>
+        <button type="button" class="refresh" id="refresh" title="Read the patches from the pedal again">Refresh</button>
       </header>
-      <div class="knob-row">
-        <amp-knob label="Gain" value="6.5"></amp-knob>
-        <amp-knob label="Bass" value="5"></amp-knob>
-        <amp-knob label="Middle" value="4"></amp-knob>
-        <amp-knob label="Treble" value="7"></amp-knob>
-        <amp-knob label="Level" value="8"></amp-knob>
-      </div>
-      <footer class="pedal-foot">
-        <span class="foot-led" id="foot-led" aria-hidden="true"></span>
-        <span class="pedal-model" id="pedal-model">MS-50G+</span>
-      </footer>
+      <p class="list-state" id="list-state">Waiting for the pedal…</p>
+      <ol class="slots" id="slots"></ol>
+    </aside>
+
+    <section class="patch-detail" id="detail" aria-live="polite">
+      <p class="detail-empty">Select a patch to see its effect chain.</p>
     </section>
   </main>
 
