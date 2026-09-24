@@ -365,6 +365,105 @@ amp-knob[readonly] { cursor: default; }
 amp-knob[readonly] .knob-readout { opacity: 1; }
 .knob-mark { fill: var(--ink); opacity: 0.55; }
 
+/* graphic EQ: one fader per band, 0 in the middle */
+.eq {
+  --eq-height: 6.5rem;
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+}
+.eq-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: center;
+}
+.eq-row li { min-width: 0; }
+.eq-values {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.62rem;
+  color: var(--amber);
+}
+.eq-freqs li {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.eq-stage {
+  position: relative;
+  height: var(--eq-height);
+}
+/* 0 dB line */
+.eq-stage::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px dashed var(--panel-line);
+}
+.eq-bands { height: 100%; }
+.eq-band { display: flex; justify-content: center; }
+.eq-slot {
+  position: relative;
+  width: 0.35rem;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+/* bar from 0 up or down to the value */
+.eq-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(min(var(--level), var(--zero)) * 100%);
+  height: calc(max(var(--level) - var(--zero), var(--zero) - var(--level)) * 100%);
+  border-radius: 999px;
+  background: var(--amber);
+  box-shadow: 0 0 5px var(--amber-glow);
+}
+.eq-thumb {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--level) * 100%);
+  width: 1.3rem;
+  height: 0.55rem;
+  border-radius: 0.15rem;
+  transform: translate(-50%, 50%);
+  background: linear-gradient(#d8d8d8, #7a7a7a);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.6);
+}
+.eq-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 45% 15%;
+  background: #222;
+}
+.eq-curve {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.eq-curve polyline {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0.45;
+}
+.stomp:not(.is-on) .eq { opacity: 0.5; filter: saturate(0.3); }
+
 .switch {
   display: flex;
   flex-direction: column;

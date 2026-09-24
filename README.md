@@ -75,7 +75,9 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   - Each effect's parameters are drawn as controls: `<amp-knob>` (`knob.js`) in `readonly`
     mode for continuous ones, showing the pedal's text for the value, a dot at the default
     and an arc from the centre for −N…+N controls; parameters with up to 6 positions (Mode,
-    Ratio…) are drawn as a switch with the active option lit. Bypassed effects are dimmed.
+    Ratio…) are drawn as a switch with the active option lit. Three or more centred bands
+    named after a frequency (Gt GEQ 7's 100Hz…6.4kHz) are drawn as a graphic EQ: faders
+    around a 0 dB line with the curve joining them. Bypassed effects are dimmed.
     Nothing is sent to the pedal.
 
 - Effect names come from the pedal itself (`stomp_whisperer.effects`), using read-only

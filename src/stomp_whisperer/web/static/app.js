@@ -160,6 +160,59 @@ function renderKnob(param) {
   return knob;
 }
 
+// Graphic EQ bands: centred (-N…+N) parameters named after a frequency.
+const BAND_NAME = /^\d+(\.\d+)?\s*k?Hz$/i;
+const MIN_EQ_BANDS = 3;
+
+function isEqBand(param) {
+  return param.center != null && BAND_NAME.test(param.name ?? "");
+}
+
+// Faders like a graphic EQ: 0 in the middle, a bar up or down to the value,
+// and a line joining the bands to show the curve.
+function renderEq(bands) {
+  const points = bands.map((band, i) => {
+    const x = ((i + 0.5) / bands.length) * 100;
+    const y = (1 - band.value / band.max) * 100;
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  const curve = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  curve.setAttribute("class", "eq-curve");
+  curve.setAttribute("viewBox", "0 0 100 100");
+  curve.setAttribute("preserveAspectRatio", "none");
+  curve.setAttribute("aria-hidden", "true");
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  line.setAttribute("points", points);
+  line.setAttribute("vector-effect", "non-scaling-stroke");
+  curve.append(line);
+
+  const row = (className, make) =>
+    el("ol", { class: `eq-row ${className}`, "aria-hidden": "true" },
+      ...bands.map((band) => el("li", {}, make(band))));
+
+  const faders = bands.map((band) => el("li", {
+    class: "eq-band",
+    title: [paramDetails(band), `Value: ${band.display}`].filter(Boolean).join("\n"),
+    "aria-label": `${band.name}: ${band.display}`,
+    style: `--level: ${band.value / band.max}; --zero: ${band.center / band.max}`,
+  },
+    el("span", { class: "eq-slot" }, el("span", { class: "eq-fill" }), el("span", { class: "eq-thumb" }))));
+
+  return el("div", { class: "eq", role: "group", "aria-label": "Graphic EQ" },
+    row("eq-values", (band) => band.display),
+    el("div", { class: "eq-stage" }, curve, el("ol", { class: "eq-row eq-bands" }, ...faders)),
+    row("eq-freqs", (band) => band.name));
+}
+
+function renderControls(params) {
+  const bands = params.filter(isEqBand);
+  const others = bands.length >= MIN_EQ_BANDS ? params.filter((p) => !isEqBand(p)) : params;
+  return [
+    bands.length >= MIN_EQ_BANDS ? renderEq(bands) : null,
+    el("div", { class: "controls", "aria-label": "Parameters" }, ...others.map(renderControl)),
+  ];
+}
+
 function renderControl(param) {
   return param.options ? renderSwitch(param) : renderKnob(param);
 }
@@ -185,10 +238,10 @@ function renderEffect(fx) {
     title,
     fx.description ? el("p", { class: "stomp-description" }, fx.description) : null,
     pending,
-    fx.params.length && fx.params[0].max != null
-      ? el("div", { class: "controls", "aria-label": "Parameters" }, ...fx.params.map(renderControl))
-      : el("dl", { class: "params", "aria-label": "Raw parameter values" },
-          ...fx.params.map(renderRawParam)));
+    ...(fx.params.length && fx.params[0].max != null
+      ? renderControls(fx.params)
+      : [el("dl", { class: "params", "aria-label": "Raw parameter values" },
+          ...fx.params.map(renderRawParam))]));
 }
 
 function renderDetail(patch) {
