@@ -24,14 +24,16 @@ def _chunk(tag: bytes, payload: bytes) -> bytes:
     return tag + struct.pack("<I", len(payload)) + payload
 
 
-def _zd2(effect_id: int, name: bytes, group: bytes, params: list[dict] | None) -> bytes:
+def _zd2(effect_id: int, name: bytes, group: bytes, params: list[dict] | bytes | None) -> bytes:
     head = bytearray(b"ZDLF" + b"\x00" * 92)
     head += struct.pack("<I", effect_id) + name.ljust(11, b"\x00") + group.ljust(11, b"\x00")
     head += b"\x00" * 6
     body = _chunk(b"ICON", b"\x01\x02") + _chunk(b"TXE1", b"Warm drive.\x00")
     body += _chunk(b"DATA", b"\xff" * 40)
+    if isinstance(params, list):
+        params = json.dumps({"Parameters": params}).encode()
     if params is not None:
-        body += _chunk(b"PRME", json.dumps({"Parameters": params}).encode() + b"\x00")
+        body += _chunk(b"PRME", params + b"\x00")
     return bytes(head) + body
 
 
@@ -49,6 +51,18 @@ def test_parse_effect_file():
     assert (info.id, info.name, info.group) == (0x03000080, "DYN Drive", "DRIVE")
     assert info.description == "Warm drive."
     assert info.params == [Param("Gain", "Adjusts the gain."), Param("VOL", "")]
+
+
+def test_tolerates_trailing_comma_in_parameter_list():
+    prme = b'{"Parameters":[{"name":"Gain"},\r\n  ]\r\n}'
+    data = _zd2(0x04000111, b"KRAMPUS", b"PREAMP", prme)
+    assert parse_effect_file(data).params == [Param("Gain", "")]
+
+
+def test_unreadable_parameter_list_keeps_the_name():
+    data = _zd2(0x04000111, b"KRAMPUS", b"PREAMP", b'{"Parameters":[{name:Gain}]}')
+    info = parse_effect_file(data)
+    assert (info.name, info.params) == ("KRAMPUS", [])
 
 
 def test_eleven_char_name_without_terminator():

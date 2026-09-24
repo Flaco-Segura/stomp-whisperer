@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import struct
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -46,6 +47,9 @@ _ZD2_ID_OFFSET = 96
 _ZD2_NAME_OFFSET = 100
 _ZD2_GROUP_OFFSET = 111
 _ZD2_NAME_SIZE = 11
+
+# Some of Zoom's PRME lists end with a trailing comma ("},\r\n  ]"), which isn't valid JSON.
+_TRAILING_COMMA = re.compile(r",(\s*[\]}])")
 
 
 class EffectFormatError(ValueError):
@@ -115,9 +119,9 @@ def parse_effect_file(data: bytes, file: str = "") -> EffectInfo:
     params: list[Param] = []
     if "PRME" in chunks:
         try:
-            spec = json.loads(_cstring(chunks["PRME"]) or "{}")
-        except json.JSONDecodeError as exc:
-            raise EffectFormatError(f"{file}: unreadable PRME parameter list") from exc
+            spec = json.loads(_TRAILING_COMMA.sub(r"\1", _cstring(chunks["PRME"])) or "{}")
+        except json.JSONDecodeError:
+            spec = {}  # keep the name and description even if the parameter list is unreadable
         params = [Param(name=p.get("name", ""), explanation=p.get("explanation", ""))
                   for p in spec.get("Parameters", [])]
 
