@@ -96,12 +96,10 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   each value as the pedal would, with its range in the tooltip.
 
 **Next steps (in order):**
-1. Confirm the note glyphs against the pedal's screen: the order is certain, but whether
-   `\x18` is an eighth or a quarter note (and so every synced label) is still inferred.
-2. Grow the web UI on top of the (still read-only) `Pedal` API: bind `<amp-knob>` to real
+1. Grow the web UI on top of the (still read-only) `Pedal` API: bind `<amp-knob>` to real
    parameters in the detail view now that ranges are known; drag-and-drop for rearranging
    effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
-3. Only after read support is solid: design patch *writing* (composing patches from the
+2. Only after read support is solid: design patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other
    Zoom models, see Known Risks below).
 

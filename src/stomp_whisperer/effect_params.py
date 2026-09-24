@@ -79,6 +79,7 @@ _SYNC_RULES = {
 _ANY_MAXIMUM = -1
 
 # The pedal's font draws note values with control characters; shortest first.
+# Checked on the pedal's screen: TapeEcho Time 745 (entry 6, "\x18.") shows a dotted eighth.
 _NOTE_GLYPHS = {"\x16": "1/32", "\x17": "1/16", "\x18": "1/8", "\x19": "1/4", "\x1a": "1/2"}
 _SHORTER_NOTE = {"1/16": "1/32", "1/8": "1/16", "1/4": "1/8", "1/2": "1/4"}
 
