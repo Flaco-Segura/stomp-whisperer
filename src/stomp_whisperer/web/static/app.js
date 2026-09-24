@@ -2,6 +2,7 @@
 // the patch list on the left and the selected patch's effect chain on the right.
 
 const POLL_MS = 2000;
+const EFFECT_INFO_POLL_MS = 1500;
 
 const statusEl = document.getElementById("status");
 const statusText = document.getElementById("status-text");
@@ -31,12 +32,14 @@ const MESSAGES = {
 
 let lastState = null;
 let selectedSlot = null;
+let detailTimer = null;
 
 // ---------- small DOM helper ----------
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
+    if (value == null) continue;
     if (key === "class") node.className = value;
     else if (key === "dataset") Object.assign(node.dataset, value);
     else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
@@ -69,12 +72,14 @@ function renderList(patches) {
     const isEmpty = patch.effect_count === 0;
     const leds = el("span", { class: "chain-leds", "aria-hidden": "true" },
       ...patch.effects.map((fx) => el("i", { class: fx.enabled ? "on" : "" })));
+    const effectNames = patch.effects.map((fx) => fx.name ?? fx.id).join(" → ");
     const count = isEmpty ? "empty" : `${patch.effect_count} fx`;
     const button = el("button", {
       type: "button",
       class: "slot",
       dataset: { slot: patch.slot },
       "aria-current": patch.slot === selectedSlot ? "true" : "false",
+      title: effectNames,
       onclick: () => selectSlot(patch.slot),
     },
       el("span", { class: "slot-number" }, slotLabel(patch.slot)),
@@ -106,6 +111,7 @@ async function loadList(refresh = false) {
 }
 
 function clearList() {
+  clearTimeout(detailTimer);
   slotsEl.replaceChildren();
   setListState("Waiting for the pedal…");
   showDetailMessage("Select a patch to see its effect chain.");
@@ -117,24 +123,39 @@ function showDetailMessage(text) {
   detailEl.replaceChildren(el("p", { class: "detail-empty" }, text));
 }
 
+function renderParam(param, index) {
+  const label = param.name ?? `P${index + 1}`;
+  return el("div", {
+    class: param.value === 0 && !param.name ? "param is-zero" : "param",
+    title: param.explanation || null,
+  },
+    el("dt", {}, label),
+    el("dd", {}, String(param.value)));
+}
+
 function renderEffect(fx) {
   if (fx.empty) {
     return el("li", { class: "stomp is-empty" },
       el("span", { class: "stomp-position" }, `#${fx.position}`),
       el("p", { class: "stomp-name" }, "Empty slot"));
   }
-  const params = fx.params.map((value, index) =>
-    el("div", { class: value === 0 ? "param is-zero" : "param" },
-      el("dt", {}, `P${index + 1}`),
-      el("dd", {}, String(value))));
+  const title = fx.name
+    ? el("p", { class: "stomp-name", title: `Effect ID ${fx.id}` }, fx.name)
+    : el("p", { class: "stomp-name" }, "Effect ", el("code", { title: "Effect ID" }, fx.id));
+  const pending = fx.info_pending
+    ? el("p", { class: "stomp-pending" }, "Reading effect info from the pedal…")
+    : null;
   return el("li", { class: fx.enabled ? "stomp is-on" : "stomp" },
     el("div", { class: "stomp-top" },
       el("span", { class: "stomp-position" }, `#${fx.position}`),
+      fx.group ? el("span", { class: "stomp-group" }, fx.group) : null,
       el("span", { class: "stomp-led", title: fx.enabled ? "On" : "Off" }),
       el("span", { class: "stomp-state" }, fx.enabled ? "On" : "Off")),
-    el("p", { class: "stomp-name" }, "Effect ",
-      el("code", { title: "Effect ID (names not decoded yet)" }, fx.id)),
-    el("dl", { class: "params", "aria-label": "Raw parameter values" }, ...params));
+    title,
+    fx.description ? el("p", { class: "stomp-description" }, fx.description) : null,
+    pending,
+    el("dl", { class: fx.name ? "params" : "params is-raw", "aria-label": "Parameters" },
+      ...fx.params.map(renderParam)));
 }
 
 function renderDetail(patch) {
@@ -143,7 +164,7 @@ function renderDetail(patch) {
     : effects.length === 1 ? "Single effect"
     : `Chain of ${effects.length} effects`;
 
-  detailEl.replaceChildren(
+  detailEl.replaceChildren(...[
     el("header", { class: "detail-head" },
       el("p", { class: "detail-slot" }, `Slot ${slotLabel(patch.slot)}`),
       el("h2", {}, patch.name ?? "(unreadable)"),
@@ -153,12 +174,14 @@ function renderDetail(patch) {
       patch.error ? el("p", { class: "warning" }, patch.error) : null),
     el("ol", { class: "chain", "aria-label": "Effect chain, in signal order" },
       ...patch.chain.map(renderEffect)),
-    effects.length ? el("p", { class: "detail-note" },
-      "Effect names and parameter labels aren't decoded yet; values are raw.") : null,
-  );
+    effects.some((fx) => fx.info_pending) ? el("p", { class: "detail-note" },
+      "The first time, effect names are read from the pedal's own effect files " +
+      "(a few seconds each). They're remembered after that.") : null,
+  ].filter(Boolean));
 }
 
 async function selectSlot(slot, { scroll = false } = {}) {
+  clearTimeout(detailTimer);
   selectedSlot = slot;
   history.replaceState(null, "", `#slot-${slot}`);
   for (const button of slotsEl.querySelectorAll(".slot")) {
@@ -168,10 +191,22 @@ async function selectSlot(slot, { scroll = false } = {}) {
   }
   try {
     const patch = await getJson(`/api/patches/${slot}`);
-    if (selectedSlot === slot) renderDetail(patch);
+    if (selectedSlot !== slot) return;
+    renderDetail(patch);
+    // Effect info arrives in the background; refresh until this patch is complete.
+    if (patch.chain.some((fx) => fx.info_pending)) {
+      detailTimer = setTimeout(() => refreshDetail(slot), EFFECT_INFO_POLL_MS);
+    }
   } catch (error) {
     showDetailMessage(`Couldn't load slot ${slot}: ${error.message}`);
   }
+}
+
+async function refreshDetail(slot) {
+  if (selectedSlot !== slot) return;
+  const scrollTop = detailEl.scrollTop;
+  await selectSlot(slot);
+  detailEl.scrollTop = scrollTop;
 }
 
 refreshButton.addEventListener("click", () => loadList(true));

@@ -1,8 +1,33 @@
+import pytest
 from fastapi.testclient import TestClient
 
+from stomp_whisperer.effects import EffectInfo, EffectLibrary, Param
 from stomp_whisperer.web import app as web_app
 
 client = TestClient(web_app.app)
+
+DYN_DRIVE = EffectInfo(id=0x03000080, file="DYNDRIVE.ZD2", name="DYN Drive", group="DRIVE",
+                       params=[Param("Gain", "Adjusts the gain."), Param("Tone")])
+
+
+class FakeSync(web_app.EffectSync):
+    """Never talks to the pedal; knows only the effects in its library."""
+
+    def __init__(self, library):
+        super().__init__(library)
+        self.requested = []
+
+    def request(self, effect_ids, urgent=False):
+        self.requested.append((list(effect_ids), urgent))
+
+
+@pytest.fixture(autouse=True)
+def fake_effects(monkeypatch, tmp_path):
+    library = EffectLibrary(tmp_path / "effects.json")
+    library.add(DYN_DRIVE)
+    sync = FakeSync(library)
+    monkeypatch.setattr(web_app, "effect_sync", sync)
+    return sync
 
 
 def test_status_disconnected(monkeypatch):
@@ -45,17 +70,25 @@ def test_list_patches(monkeypatch):
     first, second = client.get("/api/patches").json()
     assert first["name"] == "Drive Echo"
     assert first["effect_count"] == 2
-    assert first["effects"] == [{"id": "03000080", "enabled": False},
-                                {"id": "08000060", "enabled": True}]
+    assert first["effects"] == [{"id": "03000080", "enabled": False, "name": "DYN Drive"},
+                                {"id": "08000060", "enabled": True, "name": None}]
     assert second["name"] is None and second["error"] == "Slot is empty"
 
 
-def test_patch_detail(monkeypatch):
+def test_patch_detail(monkeypatch, fake_effects):
     monkeypatch.setattr(web_app, "read_all_slots", _fake_slots)
     web_app.cache.clear()
     body = client.get("/api/patches/1").json()
     assert body["description"] == "Drive into delay."
-    assert [fx["params"][0] for fx in body["chain"]] == [64, 279]
+    known, unknown = body["chain"]
+    assert (known["name"], known["group"]) == ("DYN Drive", "DRIVE")
+    assert known["params"] == [
+        {"name": "Gain", "explanation": "Adjusts the gain.", "value": 64},
+        {"name": "Tone", "explanation": "", "value": 0},
+    ]
+    assert unknown["name"] is None
+    assert len(unknown["params"]) == 12 and unknown["params"][0]["value"] == 279
+    assert fake_effects.requested[-1] == ([0x03000080, 0x08000060], True)
     assert client.get("/api/patches/3").status_code == 404
 
 

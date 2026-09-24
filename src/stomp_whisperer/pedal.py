@@ -119,3 +119,42 @@ class Pedal:
         if reply is None:
             raise TimeoutError(f"Pedal did not respond to patch_download({location})")
         return self._decode_patch_reply(reply, header_len=12)
+
+    # ---------- files ----------
+
+    def _file_reply(self, body: list[int], what: str) -> bytearray:
+        reply = self._send_recv(body)
+        if reply is None:
+            raise TimeoutError(f"Pedal did not respond to {what}")
+        return reply
+
+    def list_files(self, pattern: str = "*") -> list[str]:
+        """Names of the files in the pedal's storage (effects, icons, IRs, indexes)."""
+        names = []
+        reply = self._file_reply(protocol.file_find_first(pattern), "file_find_first")
+        while reply[4] == 0x04:  # 0x04 = a file matched
+            names.append(bytes(reply[14:26]).split(b"\x00", 1)[0].decode("ascii", errors="replace"))
+            reply = self._file_reply(protocol.file_find_next(pattern), "file_find_next")
+        self._send_recv(protocol.file_find_end())
+        return names
+
+    def download_file(self, name: str) -> bytes:
+        """Read a whole file from the pedal's storage, verifying each block's CRC32."""
+        self._file_reply(protocol.file_open_read(name), f"file_open_read({name})")
+        data = bytearray()
+        try:
+            while True:
+                self._file_reply(protocol.file_sync(), "file_sync")
+                self._file_reply(protocol.file_read_block(), "file_read_block")
+                reply = self._file_reply(protocol.file_sync(), "file_sync")
+                length = reply[9] * 128 + reply[8]
+                if reply[4] != 0x04 or length == 0:
+                    break
+                block = protocol.unpack_7to8(reply[10:10 + length + length // 7 + 1])
+                if (protocol.decode_checksum(reply) ^ 0xFFFFFFFF) != binascii.crc32(block):
+                    raise IOError(f"Checksum mismatch while reading {name}")
+                data += block
+        finally:
+            for body in protocol.file_close():
+                self._send_recv(body)
+        return bytes(data)

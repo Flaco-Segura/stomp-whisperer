@@ -284,10 +284,30 @@ body {
 .stomp-name {
   margin: 0.6rem 0 0.8rem;
   font-family: var(--font-display);
-  font-size: 0.85rem;
-  letter-spacing: 0.08em;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 .stomp-name code { color: var(--amber); font-size: 0.95em; }
+.stomp-group {
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.3rem;
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  background: rgba(0, 0, 0, 0.35);
+}
+.stomp-description {
+  margin: -0.4rem 0 0.8rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ink-dim);
+}
+.stomp-pending {
+  margin: -0.4rem 0 0.8rem;
+  font-size: 0.72rem;
+  color: var(--amber);
+  animation: blink 1.4s ease-in-out infinite;
+}
 
 .params {
   display: grid;
@@ -301,7 +321,15 @@ body {
   text-align: center;
   background: rgba(0, 0, 0, 0.3);
 }
-.param dt { font-size: 0.6rem; color: var(--ink-dim); }
+.param dt {
+  overflow: hidden;
+  padding: 0 0.2rem;
+  font-size: 0.6rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-dim);
+}
+.param[title] { cursor: help; }
 .param dd {
   margin: 0;
   font-variant-numeric: tabular-nums;

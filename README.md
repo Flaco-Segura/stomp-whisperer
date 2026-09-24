@@ -70,19 +70,26 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
     ~1.3 s for 100 slots, cached server-side until *Refresh* or a disconnect) and lists them
     with their name and one LED per effect (lit = on). Clicking a slot shows its detail
     (`GET /api/patches/{slot}`): description and the effect chain in signal order, each
-    effect with its on/off state, ID and 12 raw parameter values. The selected slot is kept
+    effect with its on/off state, name, group, description and its named parameters. The selected slot is kept
     in the URL (`#slot-21`).
   - `<amp-knob>` web component (`knob.js`): amp/stompbox-style rotary control with drag,
     wheel, keyboard and double-click-to-reset. Not used on the page yet; meant for binding
     to real parameters once their names and ranges are known.
 
+- Effect names come from the pedal itself (`stomp_whisperer.effects`), using read-only
+  file access (`Pedal.list_files` / `Pedal.download_file`): `FLST_SEQ.ZT2` maps effect IDs
+  to `*.ZD2` files, and each ZD2 holds the effect's name, group, English description and a
+  JSON list of its parameters (`PRME` chunk) in the order patches store their values. A ZD2
+  is ~34 KB and takes ~3 s over MIDI, so the web server reads them in a background thread
+  (the open patch's effects first) and keeps only the metadata in
+  `~/.cache/stomp-whisperer/effects.json`; binaries are never stored. Effect ID `0x0` is an
+  empty slot.
+
 **Next steps (in order):**
-1. Map effect IDs to names and parameter names/ranges. Observed so far: ID `0x0` is an empty
-   slot, and the top byte looks like the category (`0x03` drive, `0x06` mod, `0x08` delay,
-   `0x09` reverb). Factory patches 1–20 each hold a single effect named after the patch,
-   which gives a first set of known IDs.
-2. Grow the web UI on top of the (still read-only) `Pedal` API: show effect names and
-   bind `<amp-knob>` to real parameters in the detail view; drag-and-drop for rearranging
+1. Decode parameter ranges and value labels (e.g. what `Mode = 1` means). They aren't in
+   `PRME`; they probably live in the ZD2's other chunks or its DSP code.
+2. Grow the web UI on top of the (still read-only) `Pedal` API: bind `<amp-knob>` to real
+   parameters in the detail view once ranges are known; drag-and-drop for rearranging
    effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
 3. Only after read support is solid: design patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other

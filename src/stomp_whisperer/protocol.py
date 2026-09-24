@@ -95,3 +95,48 @@ def decode_checksum(reply: bytearray) -> int:
         + (reply[-2] << 21)
         + ((reply[-1] & 0x0F) << 28)
     )
+
+
+# ---------- file access (the pedal's internal storage) ----------
+#
+# Only the read side is implemented: listing and downloading. Effect binaries
+# live here as *.ZD2 files, indexed by FLST_SEQ.ZT2.
+
+FILE_CMD = 0x60
+
+
+def _file_name(name: str) -> list[int]:
+    return [*name.encode("ascii"), 0x00]
+
+
+def file_find_first(pattern: str = "*") -> list[int]:
+    return [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x25, 0x00, 0x00, *_file_name(pattern)]
+
+
+def file_find_next(pattern: str = "*") -> list[int]:
+    return [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x26, 0x00, 0x00, *_file_name(pattern)]
+
+
+def file_find_end() -> list[int]:
+    return [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x27]
+
+
+def file_open_read(name: str) -> list[int]:
+    return [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x20, 0x02, *([0x00] * 9), *_file_name(name)]
+
+
+def file_sync() -> list[int]:
+    return [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x05, 0x00]
+
+
+def file_read_block() -> list[int]:
+    return [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x22, 0x14, 0x2F, 0x60, 0x00, 0x0C, 0x00, 0x04,
+            0x00, 0x00, 0x00]
+
+
+def file_close() -> list[list[int]]:
+    """Closing takes two messages, sent in order."""
+    return [
+        [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x21, 0x40, 0x00, 0x00, 0x00, 0x00],
+        [0x52, 0x00, DEVICE_ID, FILE_CMD, 0x09],
+    ]
