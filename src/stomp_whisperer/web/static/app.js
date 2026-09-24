@@ -9,18 +9,18 @@ const modalTitle = document.getElementById("modal-title");
 const modalBody = document.getElementById("modal-body");
 
 const MESSAGES = {
-  connected: { status: "Pedal conectado" },
+  connected: { status: "Pedal connected" },
   disconnected: {
-    status: "Pedal no conectado",
-    title: "Conecta tu pedal",
-    body: "No encuentro el <strong>Zoom MS-50G+</strong>. Conéctalo por USB y enciéndelo; " +
-          "esta ventana se cerrará sola en cuanto lo detecte.",
+    status: "Pedal not connected",
+    title: "Connect your pedal",
+    body: "Can't find the <strong>Zoom MS-50G+</strong>. Plug it in via USB and power it on; " +
+          "this window will close by itself as soon as it's detected.",
   },
   offline: {
-    status: "Sin servidor",
-    title: "No hay conexión con StompWhisperer",
-    body: "El servidor local no responde. Arráncalo con <code>stomp-whisperer serve</code> " +
-          "y esta página se reconectará sola.",
+    status: "Server offline",
+    title: "Can't reach StompWhisperer",
+    body: "The local server isn't responding. Start it with <code>stomp-whisperer serve</code> " +
+          "and this page will reconnect by itself.",
   },
 };
 

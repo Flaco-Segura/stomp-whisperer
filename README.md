@@ -26,7 +26,7 @@ Then open http://127.0.0.1:8000 in your browser. Stop the server with `Ctrl+C`.
 - Without activating the virtualenv: `~/Repos/stomp-whisperer/.venv/bin/stomp-whisperer serve`
 - If port 8000 is busy, pick another one: `stomp-whisperer serve --port 8080`
 
-If the pedal is not connected, the page shows a "Conecta tu pedal" modal that closes by
+If the pedal is not connected, the page shows a "Connect your pedal" modal that closes by
 itself as soon as the pedal is detected over USB.
 
 ### CLI commands
@@ -61,7 +61,7 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
 - Local web UI skeleton (`stomp-whisperer serve` → http://127.0.0.1:8000): FastAPI serving
   plain HTML/JS/CSS from `src/stomp_whisperer/web/static/` (no build step).
   - `GET /api/status` reports whether the pedal's MIDI port is visible; the page polls it
-    every 2 s and shows a blocking "Conecta tu pedal" modal until it appears (or a
+    every 2 s and shows a blocking "Connect your pedal" modal until it appears (or a
     "server offline" variant if the backend stops).
   - `<amp-knob>` web component (`knob.js`): amp/stompbox-style rotary control with drag,
     wheel, keyboard and double-click-to-reset. Currently shown as a preview only, not
