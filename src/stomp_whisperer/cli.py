@@ -52,7 +52,9 @@ def cmd_list(args: argparse.Namespace) -> int:
                     continue
                 try:
                     patch = parse_patch(data)
-                    summary = f"{patch.name:<12} {len(patch.effect_ids)} fx"
+                    chain = "  ".join(f"{'+' if fx.enabled else '-'}{fx.id:08x}"
+                                      for fx in patch.effects)
+                    summary = f"{patch.display_name:<28} {chain}"
                 except PatchFormatError as exc:
                     summary = f"(undecodable: {exc})"
                 flag = "" if checksum_ok else "  [BAD CHECKSUM]"

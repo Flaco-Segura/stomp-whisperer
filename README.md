@@ -54,9 +54,12 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
 - CLI (`stomp-whisperer info` / `stomp-whisperer current`) confirmed working live:
   100 patches, 10 banks, 848 bytes/patch; current patch downloads with a valid checksum.
 - `stomp_whisperer.patch`: dependency-free PTCF patch parser (name, version, target,
-  effect IDs, raw chunks). Unit-tested with synthetic data; **not yet verified on hardware**.
+  effect IDs, raw chunks) plus the `EDTB` effect chain: per slot, effect ID, on/off flag and
+  12 raw parameter values. Verified against all 100 patches of a real MS-50G+ (names decode
+  correctly; EDTB IDs match the header IDs). Parsing is bounded by the header's `length`
+  field, since the pedal pads each slot with stale bytes from its previous contents.
 - CLI `stomp-whisperer list [--save DIR]`: iterates every slot, prints its name and effect
-  count, and optionally saves raw `.bin` dumps for offline decoding.
+  chain (`+`/`-` = on/off, then the effect ID in hex), and optionally saves raw `.bin` dumps.
 
 - Local web UI skeleton (`stomp-whisperer serve` → http://127.0.0.1:8000): FastAPI serving
   plain HTML/JS/CSS from `src/stomp_whisperer/web/static/` (no build step).
@@ -68,18 +71,16 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
     wired to pedal parameters.
 
 **Next steps (in order):**
-1. Run `stomp-whisperer list --save dumps/` against the pedal to verify the name decoding
-   and collect real patch binaries.
-2. Start decoding the effect-chain structure inside a patch (which effect modules are
-   active, order, parameters) — needed before any write support makes sense.
-3. Grow the web UI on top of the (still read-only) `Pedal` API: patch list, then effect
+1. Map effect IDs to names and parameter names/ranges. Observed so far: ID `0x0` is an empty
+   slot, and the top byte looks like the category (`0x03` drive, `0x06` mod, `0x08` delay,
+   `0x09` reverb). Factory patches 1–20 each hold a single effect named after the patch,
+   which gives a first set of known IDs.
+2. Grow the web UI on top of the (still read-only) `Pedal` API: patch list, then effect
    chain view with `<amp-knob>` bound to real parameters; drag-and-drop for rearranging
    effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
-4. Only after read support is solid: design patch *writing* (composing patches from the
+3. Only after read support is solid: design patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other
    Zoom models, see Known Risks below).
-
-No UI code exists yet — everything so far is the CLI/library.
 
 ## Technical Requirements
 
