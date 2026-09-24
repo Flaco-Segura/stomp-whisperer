@@ -51,6 +51,7 @@ class Pedal:
         in_index, in_name = _find_port(self._midi_in.get_ports, protocol.PORT_NAME_HINT)
         out_index, out_name = _find_port(self._midi_out.get_ports, protocol.PORT_NAME_HINT)
         if in_index is None or out_index is None:
+            self._release()
             raise PedalNotFoundError(
                 f"No MIDI port matching '{protocol.PORT_NAME_HINT}' found. "
                 "Is the pedal connected and powered on?"
@@ -63,6 +64,13 @@ class Pedal:
     def close(self) -> None:
         self._midi_in.close_port()
         self._midi_out.close_port()
+        self._release()
+
+    def _release(self) -> None:
+        # Each MidiIn/MidiOut is an ALSA sequencer client, and ALSA allows only 64
+        # user clients system-wide; a long-running server must free them explicitly.
+        self._midi_in.delete()
+        self._midi_out.delete()
 
     def __enter__(self) -> "Pedal":
         self.connect()
