@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StompWhisperer</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="knob.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="brand">Stomp<span>Whisperer</span></h1>
+    <div class="status" id="status" data-state="searching">
+      <span class="led" aria-hidden="true"></span>
+      <span id="status-text">Buscando pedal…</span>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="pedal" aria-labelledby="pedal-title">
+      <div class="pedal-screws" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <header class="pedal-head">
+        <h2 id="pedal-title">Vista previa</h2>
+        <p class="pedal-note">Controles de muestra: todavía no están conectados al pedal.</p>
+      </header>
+      <div class="knob-row">
+        <amp-knob label="Gain" value="6.5"></amp-knob>
+        <amp-knob label="Bass" value="5"></amp-knob>
+        <amp-knob label="Middle" value="4"></amp-knob>
+        <amp-knob label="Treble" value="7"></amp-knob>
+        <amp-knob label="Level" value="8"></amp-knob>
+      </div>
+      <footer class="pedal-foot">
+        <span class="foot-led" id="foot-led" aria-hidden="true"></span>
+        <span class="pedal-model" id="pedal-model">MS-50G+</span>
+      </footer>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" id="connect-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-body">
+      <svg class="modal-icon" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="22" y="6" width="20" height="14" rx="2" class="plug-head"/>
+        <rect x="27" y="10" width="3" height="5" class="plug-pin"/>
+        <rect x="34" y="10" width="3" height="5" class="plug-pin"/>
+        <rect x="18" y="20" width="28" height="16" rx="3" class="plug-body"/>
+        <path d="M32 36 v8 q0 10 -12 12" class="plug-cable"/>
+      </svg>
+      <h2 id="modal-title">Conecta tu pedal</h2>
+      <p id="modal-body">
+        No encuentro el <strong>Zoom MS-50G+</strong>. Conéctalo por USB y enciéndelo;
+        esta ventana se cerrará sola en cuanto lo detecte.
+      </p>
+      <p class="modal-searching"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span> Buscando</p>
+    </div>
+  </div>
+</body>
+</html>

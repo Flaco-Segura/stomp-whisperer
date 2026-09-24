@@ -64,6 +64,14 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    print(f"StompWhisperer UI: http://{args.host}:{args.port}")
+    uvicorn.run("stomp_whisperer.web.app:app", host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="stomp-whisperer")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -75,6 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--save", type=Path, metavar="DIR",
                              help="Also save each raw patch as DIR/patch_NNN.bin")
     list_parser.set_defaults(func=cmd_list)
+
+    serve_parser = subparsers.add_parser("serve", help="Start the local web UI")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8000)
+    serve_parser.set_defaults(func=cmd_serve)
 
     return parser
 

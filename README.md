@@ -23,16 +23,23 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
 - CLI `stomp-whisperer list [--save DIR]`: iterates every slot, prints its name and effect
   count, and optionally saves raw `.bin` dumps for offline decoding.
 
+- Local web UI skeleton (`stomp-whisperer serve` → http://127.0.0.1:8000): FastAPI serving
+  plain HTML/JS/CSS from `src/stomp_whisperer/web/static/` (no build step).
+  - `GET /api/status` reports whether the pedal's MIDI port is visible; the page polls it
+    every 2 s and shows a blocking "Conecta tu pedal" modal until it appears (or a
+    "server offline" variant if the backend stops).
+  - `<amp-knob>` web component (`knob.js`): amp/stompbox-style rotary control with drag,
+    wheel, keyboard and double-click-to-reset. Currently shown as a preview only, not
+    wired to pedal parameters.
+
 **Next steps (in order):**
 1. Run `stomp-whisperer list --save dumps/` against the pedal to verify the name decoding
    and collect real patch binaries.
 2. Start decoding the effect-chain structure inside a patch (which effect modules are
    active, order, parameters) — needed before any write support makes sense.
-3. Build a lightweight **local web UI** on top of the (still read-only) `Pedal` API:
-   a small FastAPI + uvicorn server (`stomp-whisperer serve`) that owns the MIDI
-   connection, serving plain HTML/JS with no build step or npm; drag-and-drop for
-   rearranging effect chains via vendored SortableJS. Replaces the earlier PySide6 plan
-   (too heavy).
+3. Grow the web UI on top of the (still read-only) `Pedal` API: patch list, then effect
+   chain view with `<amp-knob>` bound to real parameters; drag-and-drop for rearranging
+   effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
 4. Only after read support is solid: design patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other
    Zoom models, see Known Risks below).
@@ -54,9 +61,11 @@ No UI code exists yet — everything so far is the CLI/library.
 
 - **Zoom MS-50G+** multi-effects pedal, connected via USB. The pedal exposes itself as a class-compliant USB MIDI device (no proprietary Zoom drivers needed for transport).
 
-### Planned Python dependencies
+### Python dependencies
 
 - `python-rtmidi` — USB MIDI I/O (SysEx messages) on Linux via ALSA.
+- `fastapi` + `uvicorn` — local web UI server.
+- Dev: `pip install -e ".[dev]"` adds `pytest` and `httpx` (for FastAPI's test client).
 
 ## Known Risks
 

@@ -29,6 +29,16 @@ def _find_port(get_ports, hint: str) -> tuple[int | None, str | None]:
     return None, None
 
 
+def find_pedal_port() -> str | None:
+    """Return the pedal's MIDI input port name if it is plugged in, without opening it."""
+    midi_in = rtmidi.MidiIn()
+    try:
+        _index, name = _find_port(midi_in.get_ports, protocol.PORT_NAME_HINT)
+        return name
+    finally:
+        midi_in.delete()
+
+
 class Pedal:
     """Read-only-first client for the Zoom MS Plus series SysEx protocol."""
 
