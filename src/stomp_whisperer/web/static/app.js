@@ -125,12 +125,20 @@ function showDetailMessage(text) {
 
 function renderParam(param, index) {
   const label = param.name ?? `P${index + 1}`;
+  const details = [param.explanation, param.range && `Range: ${param.range}`]
+    .filter(Boolean).join("\n");
+  const level = param.max ? Math.min(1, param.value / param.max) : null;
   return el("div", {
     class: param.value === 0 && !param.name ? "param is-zero" : "param",
-    title: param.explanation || null,
+    title: details || null,
   },
     el("dt", {}, label),
-    el("dd", {}, String(param.value)));
+    el("dd", {}, param.display),
+    level === null ? null : el("span", {
+      class: "param-level",
+      style: `--level: ${level}`,
+      "aria-hidden": "true",
+    }));
 }
 
 function renderEffect(fx) {

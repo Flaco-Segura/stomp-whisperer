@@ -7,7 +7,8 @@ from stomp_whisperer.web import app as web_app
 client = TestClient(web_app.app)
 
 DYN_DRIVE = EffectInfo(id=0x03000080, file="DYNDRIVE.ZD2", name="DYN Drive", group="DRIVE",
-                       params=[Param("Gain", "Adjusts the gain."), Param("Tone")])
+                       params=[Param("Gain", "Adjusts the gain.", max=100, default=78),
+                               Param("Mode", max=1, default=1, labels=["COMBO", "STACK"])])
 
 
 class FakeSync(web_app.EffectSync):
@@ -83,8 +84,10 @@ def test_patch_detail(monkeypatch, fake_effects):
     known, unknown = body["chain"]
     assert (known["name"], known["group"]) == ("DYN Drive", "DRIVE")
     assert known["params"] == [
-        {"name": "Gain", "explanation": "Adjusts the gain.", "value": 64},
-        {"name": "Tone", "explanation": "", "value": 0},
+        {"name": "Gain", "explanation": "Adjusts the gain.", "value": 64, "display": "64",
+         "max": 100, "default": 78, "range": "0 to 100"},
+        {"name": "Mode", "explanation": "", "value": 0, "display": "COMBO",
+         "max": 1, "default": 1, "range": "COMBO to STACK"},
     ]
     assert unknown["name"] is None
     assert len(unknown["params"]) == 12 and unknown["params"][0]["value"] == 279

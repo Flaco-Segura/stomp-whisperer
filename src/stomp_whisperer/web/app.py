@@ -179,7 +179,8 @@ def _effect_json(position: int, effect: Effect) -> dict:
         "description": "",
         "info_pending": False,
         # Unnamed until the effect's file is read; then only the params it defines.
-        "params": [{"name": None, "explanation": "", "value": v} for v in effect.params],
+        "params": [{"name": None, "explanation": "", "value": v, "display": str(v),
+                    "max": None, "default": None, "range": None} for v in effect.params],
     }
     if effect.id == 0:
         return body
@@ -188,9 +189,26 @@ def _effect_json(position: int, effect: Effect) -> dict:
         body["info_pending"] = effect_sync.is_pending(effect.id)
         return body
     body.update(name=info.name, group=info.group, description=info.description)
-    body["params"] = [{"name": p.name, "explanation": p.explanation, "value": v}
-                      for p, v in zip(info.params, effect.params)]
+    body["params"] = [_param_json(p, v) for p, v in zip(info.params, effect.params)]
     return body
+
+
+def _param_json(param, value: int) -> dict:
+    if param.max is None:
+        value_range = None
+    elif param.labels:
+        value_range = f"{param.labels[0]} to {param.labels[-1]}"
+    else:
+        value_range = f"0 to {param.max}"
+    return {
+        "name": param.name,
+        "explanation": param.explanation,
+        "value": value,
+        "display": param.display(value),
+        "max": param.max,
+        "default": param.default,
+        "range": value_range,
+    }
 
 
 def _description(patch: Patch) -> str:

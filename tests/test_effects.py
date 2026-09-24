@@ -84,3 +84,14 @@ def test_library_round_trip(tmp_path):
     reloaded = EffectLibrary(path)
     assert 0x03000080 in reloaded
     assert reloaded.get(0x03000080).params == [Param("Gain", "")]
+
+
+def test_library_ignores_cache_from_older_version(tmp_path):
+    path = tmp_path / "effects.json"
+    path.write_text(json.dumps({"effects": [{"id": 1, "file": "X.ZD2", "name": "Old"}]}))
+    assert 1 not in EffectLibrary(path)
+
+
+def test_param_display():
+    mode = Param("Mode", max=1, labels=["COMBO", "STACK"])
+    assert (mode.display(1), Param("Gain").display(64)) == ("STACK", "64")

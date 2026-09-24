@@ -20,8 +20,10 @@ byte + 21 bytes of padding. An effect entry is:
 A ZD2 file starts with b"ZDLF" and a fixed header holding the effect id (uint32 LE
 at offset 96), its display name (11 bytes at 100) and its group name (11 bytes at
 111). Tagged chunks follow (4-byte tag, uint32 LE length, payload), starting at
-"ICON". Of those, TXE1 is the English description and PRME is JSON listing the
-parameters (name + English explanation) in the order patches store their values.
+"ICON". Of those, TXE1 is the English description, PRME is JSON listing the
+parameters (name + English explanation) in the order patches store their values,
+and DATA is the effect's DSP program, where each parameter's range, default and
+display labels live (see `effect_params`).
 
 Only this metadata is kept; the effect binaries themselves are never stored.
 """
@@ -34,6 +36,8 @@ import re
 import struct
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+from .effect_params import read_param_specs
 
 INDEX_FILE = "FLST_SEQ.ZT2"
 
@@ -48,6 +52,9 @@ _ZD2_NAME_OFFSET = 100
 _ZD2_GROUP_OFFSET = 111
 _ZD2_NAME_SIZE = 11
 
+# Bump when EffectInfo gains fields, so caches written by older versions are re-read.
+CACHE_VERSION = 2
+
 # Some of Zoom's PRME lists end with a trailing comma ("},\r\n  ]"), which isn't valid JSON.
 _TRAILING_COMMA = re.compile(r",(\s*[\]}])")
 
@@ -60,6 +67,14 @@ class EffectFormatError(ValueError):
 class Param:
     name: str
     explanation: str = ""
+    max: int | None = None  # the minimum is always 0
+    default: int | None = None
+    labels: list[str] | None = None  # what the pedal shows for each value, if known
+
+    def display(self, value: int) -> str:
+        if self.labels and 0 <= value < len(self.labels):
+            return self.labels[value]
+        return str(value)
 
 
 @dataclass
@@ -125,6 +140,15 @@ def parse_effect_file(data: bytes, file: str = "") -> EffectInfo:
         params = [Param(name=p.get("name", ""), explanation=p.get("explanation", ""))
                   for p in spec.get("Parameters", [])]
 
+    try:
+        specs = read_param_specs(chunks["DATA"]) if "DATA" in chunks else []
+    except (ValueError, struct.error, IndexError):
+        specs = []  # an unexpected program layout only costs the ranges, not the names
+    # PRME lists the visible parameters in storage order; the program's descriptors
+    # follow the same order (with hidden "Dummy" slots at the end).
+    for param, spec in zip(params, specs):
+        param.max, param.default, param.labels = spec.max, spec.default, spec.labels
+
     return EffectInfo(id=effect_id, file=file, name=name, group=group,
                       description=_cstring(chunks.get("TXE1", b"")), params=params)
 
@@ -147,6 +171,8 @@ class EffectLibrary:
             raw = json.loads(self.path.read_text())
         except (OSError, ValueError):
             return
+        if raw.get("version") != CACHE_VERSION:
+            return  # written by an older version: read the effects again
         for item in raw.get("effects", []):
             item["params"] = [Param(**p) for p in item.get("params", [])]
             info = EffectInfo(**item)
@@ -154,7 +180,7 @@ class EffectLibrary:
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        body = {"effects": [asdict(e) for e in sorted(self._effects.values(), key=lambda e: e.id)]}
+        body = {"version": CACHE_VERSION, "effects": [asdict(e) for e in sorted(self._effects.values(), key=lambda e: e.id)]}
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(body, indent=1, ensure_ascii=False))
         tmp.replace(self.path)

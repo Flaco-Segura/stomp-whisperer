@@ -84,12 +84,21 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   (the open patch's effects first) and keeps only the metadata in
   `~/.cache/stomp-whisperer/effects.json`; binaries are never stored. Effect ID `0x0` is an
   empty slot.
+- Parameter ranges, defaults and display labels (`stomp_whisperer.effect_params`): a ZD2's
+  `DATA` chunk is a TI C6000 ELF whose `.const` section holds one 0x38-byte descriptor per
+  parameter (name, max, default, display function). Display functions are DSP code, so
+  they're interpreted by symbol name: `disp_prm_*` label tables (COMBO/STACK, 20Hz…20kHz),
+  offset rules (`offset_minus12_05` → −12…+12 in 0.5 steps, `off_to_100` → OFF, 0…100) and
+  tempo-synced ranges (numbers followed by note values: 1/16, 1/8T, 1/8., 1/4×2…). The web UI
+  shows each value as the pedal would, with its range in the tooltip.
 
 **Next steps (in order):**
-1. Decode parameter ranges and value labels (e.g. what `Mode = 1` means). They aren't in
-   `PRME`; they probably live in the ZD2's other chunks or its DSP code.
+1. Delay `Time` (`GetString_1_5000_Sync` and similar) is still shown as the stored number:
+   its millisecond scale isn't a plain step and depends on the delay's Mode. Some LFO rates
+   show "BPM sync" instead of the exact note value. Comparing against the pedal's screen
+   would settle both.
 2. Grow the web UI on top of the (still read-only) `Pedal` API: bind `<amp-knob>` to real
-   parameters in the detail view once ranges are known; drag-and-drop for rearranging
+   parameters in the detail view now that ranges are known; drag-and-drop for rearranging
    effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
 3. Only after read support is solid: design patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other
