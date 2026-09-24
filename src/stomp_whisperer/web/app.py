@@ -180,7 +180,9 @@ def _effect_json(position: int, effect: Effect) -> dict:
         "info_pending": False,
         # Unnamed until the effect's file is read; then only the params it defines.
         "params": [{"name": None, "explanation": "", "value": v, "display": str(v),
-                    "max": None, "default": None, "range": None} for v in effect.params],
+                    "max": None, "default": None, "range": None, "options": None,
+                    "center": None}
+                   for v in effect.params],
     }
     if effect.id == 0:
         return body
@@ -191,6 +193,10 @@ def _effect_json(position: int, effect: Effect) -> dict:
     body.update(name=info.name, group=info.group, description=info.description)
     body["params"] = [_param_json(p, v) for p, v in zip(info.params, effect.params)]
     return body
+
+
+# Parameters with this many positions or fewer are switches (Mode, Ratio…), not knobs.
+MAX_SWITCH_POSITIONS = 6
 
 
 def _param_json(param, value: int) -> dict:
@@ -208,7 +214,18 @@ def _param_json(param, value: int) -> dict:
         "max": param.max,
         "default": param.default,
         "range": value_range,
+        "options": ([param.display(v) for v in range(param.max + 1)]
+                    if param.max is not None and param.max < MAX_SWITCH_POSITIONS else None),
+        "center": _center(param),
     }
+
+
+def _center(param) -> int | None:
+    """Value shown as 0 on a -N…+N parameter, where its arc should start."""
+    labels = param.labels
+    if labels and labels[0].startswith("-") and "0" in labels:
+        return labels.index("0")
+    return None
 
 
 def _description(patch: Patch) -> str:

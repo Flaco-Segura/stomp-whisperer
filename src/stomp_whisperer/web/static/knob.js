@@ -5,6 +5,15 @@
 // Interaction: drag up/down (Shift = fine), mouse wheel, arrow keys,
 // PageUp/PageDown, Home/End, double-click to reset to the initial value.
 // Fires "input" while moving and "change" when a gesture ends.
+//
+// Display-only use (the app never writes to the pedal):
+//
+//   <amp-knob label="Time" max="962" value="601" mark="946" readonly></amp-knob>
+//   knob.displayText = "620";   // text shown instead of the raw number
+//
+// `readonly` disables every interaction; `mark` draws a dot on the scale (e.g. the
+// parameter's default); `center` starts the arc there instead of at the minimum,
+// for -N…+N controls like EQ bands.
 
 const SWEEP = 270;            // degrees of travel, like a real pot
 const DRAG_PIXELS = 200;      // pixels of vertical drag for the full range
@@ -26,9 +35,11 @@ class AmpKnob extends HTMLElement {
     this.step = Number(this.getAttribute("step") ?? 0.1);
     this.defaultValue = Number(this.getAttribute("value") ?? this.min);
     this._value = this.defaultValue;
+    this.readOnly = this.hasAttribute("readonly");
+    this.center = Number(this.getAttribute("center") ?? this.min);
 
     this._render();
-    this._bindEvents();
+    if (!this.readOnly) this._bindEvents();
     this._update();
   }
 
@@ -43,12 +54,22 @@ class AmpKnob extends HTMLElement {
     this.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
-  get _fraction() { return (this._value - this.min) / (this.max - this.min); }
+  get _fraction() { return this._fractionOf(this._value); }
+
+  _fractionOf(v) { return this.max > this.min ? (v - this.min) / (this.max - this.min) : 0; }
+
+  get displayText() { return this._displayText; }
+
+  set displayText(text) {
+    this._displayText = text;
+    if (this._built) this._update();
+  }
 
   _render() {
     const label = this.getAttribute("label") ?? "";
     this.setAttribute("role", "slider");
     this.setAttribute("tabindex", "0");
+    if (this.readOnly) this.setAttribute("aria-readonly", "true");
     this.setAttribute("aria-label", label);
     this.setAttribute("aria-valuemin", this.min);
     this.setAttribute("aria-valuemax", this.max);
@@ -68,6 +89,14 @@ class AmpKnob extends HTMLElement {
       }));
     }
     face.append(ticks);
+
+    if (this.hasAttribute("mark")) {
+      const angle = (-SWEEP / 2 + SWEEP * this._fractionOf(Number(this.getAttribute("mark"))))
+        * (Math.PI / 180);
+      face.append(svg("circle", {
+        cx: 50 + Math.sin(angle) * 40.5, cy: 50 - Math.cos(angle) * 40.5, r: 2.4, class: "knob-mark",
+      }));
+    }
 
     // Value arc: a track plus a glowing fill, both starting at 7:30 o'clock.
     const arcAttrs = { cx: 50, cy: 50, r: 40.5, pathLength: 360, transform: "rotate(135 50 50)" };
@@ -102,8 +131,11 @@ class AmpKnob extends HTMLElement {
   _update() {
     const angle = -SWEEP / 2 + SWEEP * this._fraction;
     this._rotor.setAttribute("transform", `rotate(${angle} 50 50)`);
-    this._arc.setAttribute("stroke-dasharray", `${SWEEP * this._fraction} 360`);
-    const text = this._value.toFixed(this.step < 1 ? 1 : 0);
+    const from = this._fractionOf(this.center);
+    const [start, end] = [Math.min(from, this._fraction), Math.max(from, this._fraction)];
+    // "0 gap dash rest": an arc from `start` to `end` along the sweep
+    this._arc.setAttribute("stroke-dasharray", `0 ${SWEEP * start} ${SWEEP * (end - start)} 360`);
+    const text = this._displayText ?? this._value.toFixed(this.step < 1 ? 1 : 0);
     this._readout.textContent = text;
     this.setAttribute("aria-valuenow", this._value);
     this.setAttribute("aria-valuetext", text);

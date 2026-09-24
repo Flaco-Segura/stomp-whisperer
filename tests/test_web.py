@@ -85,9 +85,11 @@ def test_patch_detail(monkeypatch, fake_effects):
     assert (known["name"], known["group"]) == ("DYN Drive", "DRIVE")
     assert known["params"] == [
         {"name": "Gain", "explanation": "Adjusts the gain.", "value": 64, "display": "64",
-         "max": 100, "default": 78, "range": "0 to 100"},
+         "max": 100, "default": 78, "range": "0 to 100", "options": None,
+         "center": None},
         {"name": "Mode", "explanation": "", "value": 0, "display": "COMBO",
-         "max": 1, "default": 1, "range": "COMBO to STACK"},
+         "max": 1, "default": 1, "range": "COMBO to STACK", "options": ["COMBO", "STACK"],
+         "center": None},
     ]
     assert unknown["name"] is None
     assert len(unknown["params"]) == 12 and unknown["params"][0]["value"] == 279
@@ -106,3 +108,10 @@ def test_patches_without_pedal(monkeypatch):
 
 def test_static_files_are_revalidated():
     assert client.get("/app.js").headers["cache-control"] == "no-cache"
+
+
+def test_center_of_signed_parameters():
+    band = Param("100Hz", max=4, labels=["-2", "-1", "0", "+1", "+2"])
+    assert web_app._center(band) == 2
+    assert web_app._center(Param("Gain", max=100)) is None
+    assert web_app._center(Param("Mode", max=1, labels=["COMBO", "STACK"])) is None

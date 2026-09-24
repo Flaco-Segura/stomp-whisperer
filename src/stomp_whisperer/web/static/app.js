@@ -123,22 +123,45 @@ function showDetailMessage(text) {
   detailEl.replaceChildren(el("p", { class: "detail-empty" }, text));
 }
 
-function renderParam(param, index) {
-  const label = param.name ?? `P${index + 1}`;
-  const details = [param.explanation, param.range && `Range: ${param.range}`]
-    .filter(Boolean).join("\n");
-  const level = param.max ? Math.min(1, param.value / param.max) : null;
-  return el("div", {
-    class: param.value === 0 && !param.name ? "param is-zero" : "param",
-    title: details || null,
-  },
-    el("dt", {}, label),
-    el("dd", {}, param.display),
-    level === null ? null : el("span", {
-      class: "param-level",
-      style: `--level: ${level}`,
-      "aria-hidden": "true",
-    }));
+function paramDetails(param) {
+  return [param.explanation, param.range && `Range: ${param.range}`].filter(Boolean).join("\n");
+}
+
+// A raw value from an effect whose info hasn't been read yet.
+function renderRawParam(param, index) {
+  return el("div", { class: param.value === 0 ? "param is-zero" : "param" },
+    el("dt", {}, `P${index + 1}`),
+    el("dd", {}, param.display));
+}
+
+// Few positions (Mode, Ratio…): shown like a switch with the active option lit.
+function renderSwitch(param) {
+  return el("div", { class: "switch", title: paramDetails(param) || null },
+    el("span", { class: "switch-label" }, param.name),
+    el("ul", { class: "switch-options", "aria-label": `${param.name}: ${param.display}` },
+      ...param.options.map((option, value) =>
+        el("li", { class: value === param.value ? "is-active" : "" }, option))));
+}
+
+function renderKnob(param) {
+  const knob = el("amp-knob", {
+    label: param.name,
+    min: "0",
+    max: String(param.max),
+    step: "1",
+    value: String(param.value),
+    mark: param.default == null ? null : String(param.default),
+    center: param.center == null ? null : String(param.center),
+    readonly: "",
+    title: [paramDetails(param), param.default == null ? null : "Dot: default value"]
+      .filter(Boolean).join("\n") || null,
+  });
+  knob.displayText = param.display;
+  return knob;
+}
+
+function renderControl(param) {
+  return param.options ? renderSwitch(param) : renderKnob(param);
 }
 
 function renderEffect(fx) {
@@ -162,8 +185,10 @@ function renderEffect(fx) {
     title,
     fx.description ? el("p", { class: "stomp-description" }, fx.description) : null,
     pending,
-    el("dl", { class: fx.name ? "params" : "params is-raw", "aria-label": "Parameters" },
-      ...fx.params.map(renderParam)));
+    fx.params.length && fx.params[0].max != null
+      ? el("div", { class: "controls", "aria-label": "Parameters" }, ...fx.params.map(renderControl))
+      : el("dl", { class: "params", "aria-label": "Raw parameter values" },
+          ...fx.params.map(renderRawParam)));
 }
 
 function renderDetail(patch) {

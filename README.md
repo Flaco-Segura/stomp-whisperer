@@ -72,9 +72,11 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
     (`GET /api/patches/{slot}`): description and the effect chain in signal order, each
     effect with its on/off state, name, group, description and its named parameters. The selected slot is kept
     in the URL (`#slot-21`).
-  - `<amp-knob>` web component (`knob.js`): amp/stompbox-style rotary control with drag,
-    wheel, keyboard and double-click-to-reset. Not used on the page yet; meant for binding
-    to real parameters once their names and ranges are known.
+  - Each effect's parameters are drawn as controls: `<amp-knob>` (`knob.js`) in `readonly`
+    mode for continuous ones, showing the pedal's text for the value, a dot at the default
+    and an arc from the centre for −N…+N controls; parameters with up to 6 positions (Mode,
+    Ratio…) are drawn as a switch with the active option lit. Bypassed effects are dimmed.
+    Nothing is sent to the pedal.
 
 - Effect names come from the pedal itself (`stomp_whisperer.effects`), using read-only
   file access (`Pedal.list_files` / `Pedal.download_file`): `FLST_SEQ.ZT2` maps effect IDs
@@ -96,10 +98,9 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   each value as the pedal would, with its range in the tooltip.
 
 **Next steps (in order):**
-1. Grow the web UI on top of the (still read-only) `Pedal` API: bind `<amp-knob>` to real
-   parameters in the detail view now that ranges are known; drag-and-drop for rearranging
-   effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
-2. Only after read support is solid: design patch *writing* (composing patches from the
+1. Drag-and-drop to rearrange effect chains in the UI (vendored SortableJS), still as a
+   read-only preview.
+2. Possible future extension, deliberately on hold: patch *writing* (composing patches from the
    pedal's own built-in effect library only — never importing effect binaries from other
    Zoom models, see Known Risks below).
 

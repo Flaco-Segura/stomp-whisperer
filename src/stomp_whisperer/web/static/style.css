@@ -243,7 +243,7 @@ body {
 
 .stomp {
   position: relative;
-  width: 13rem;
+  width: 19rem;
   padding: 0.9rem 1rem 1rem;
   border-radius: 0.9rem;
   background:
@@ -348,6 +348,57 @@ body {
   width: calc(var(--level) * 100%);
   background: var(--amber);
   opacity: 0.7;
+}
+
+/* knobs and switches inside an effect */
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.9rem, 1fr));
+  gap: 0.6rem 0.3rem;
+  justify-items: center;
+}
+.controls amp-knob { width: 3.9rem; }
+/* a bypassed effect keeps its settings but reads as inactive */
+.stomp:not(.is-on) .controls { opacity: 0.5; filter: saturate(0.3); }
+.controls .knob-label { font-size: 0.6rem; letter-spacing: 0.1em; }
+amp-knob[readonly] { cursor: default; }
+amp-knob[readonly] .knob-readout { opacity: 1; }
+.knob-mark { fill: var(--ink); opacity: 0.55; }
+
+.switch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+.switch-label {
+  font-family: var(--font-display);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.switch-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.65rem;
+  text-align: center;
+}
+.switch-options li {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  color: var(--ink-dim);
+  background: rgba(0, 0, 0, 0.3);
+}
+.switch-options li.is-active {
+  color: #1a1206;
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber-glow);
 }
 
 @media (max-width: 720px) {
