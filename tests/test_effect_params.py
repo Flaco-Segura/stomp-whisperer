@@ -86,19 +86,36 @@ def test_offset_rules():
     assert (level.labels[0], level.labels[1], level.labels[101]) == ("OFF", "0", "100")
 
 
-def test_sync_rule_numbers_then_note_values():
-    sync = b"\x16\x00\x00\x00\x00" + b"\x19 3\x00\x00" + b"\x18.\x00\x00\x00" + b"\x19x2\x00\x00"
-    program = _program([_descriptor(b"Rate", 53, 11, display=0x40)],
-                       {"disp_prm_BPM_sync": sync}, {"GetString_ofst_1_50_Sync": 0x40})
-    labels = read_param_specs(program)[0].labels
-    assert labels[:2] == ["1", "2"] and labels[49] == "50"
-    assert labels[50:] == ["1/32", "1/8T", "1/8.", "1/4×2"]
+NOTES = (b"\x16\x00\x00\x00\x00", b"\x17\x00\x00\x00\x00", b"\x19 3\x00\x00", b"\x17.\x00\x00\x00",
+         b"\x18\x00\x00\x00\x00", b"\x1a 3\x00\x00", b"\x18.\x00\x00\x00", b"\x19\x00\x00\x00\x00",
+         b"\x19.\x00\x00\x00")
+NOTES += tuple(f"\x19x{n}".encode().ljust(5, b"\x00") for n in range(2, 22))
 
 
-def test_sync_rule_that_does_not_fit_stays_raw():
-    sync = b"\x16\x00\x00\x00\x00" * 4
+def test_delay_time_rule():
     program = _program([_descriptor(b"Time", 962, 946, display=0x40)],
-                       {"disp_prm_BPM_sync": sync}, {"GetString_1_5000_Sync": 0x40})
+                       {"disp_prm_BPM_sync": b"".join(NOTES)}, {"GetString_1_5000_Sync": 0x40})
+    labels = read_param_specs(program)[0].labels
+    assert (labels[0], labels[598], labels[599], labels[601], labels[939]) == ("1", "599", "600", "620", "4000")
+    assert (labels[940], labels[946], labels[962]) == ("1/16", "1/4", "1/4×16")
+
+
+def test_lfo_rate_rule():
+    program = _program([_descriptor(b"Rate", 110, 50, display=0x40)],
+                       {"disp_prm_BPM_sync": b"".join(NOTES)}, {"GetString_0_100_Sync": 0x40})
+    labels = read_param_specs(program)[0].labels
+    assert (labels[0], labels[100], labels[101], labels[102], labels[110]) == ("0", "100", "1/32", "1/16", "1/4×2")
+    assert labels[103] == "1/8T" and labels[104] == "1/16."
+
+
+def test_sync_rule_with_unexpected_range_stays_raw():
+    program = _program([_descriptor(b"Time", 500, 100, display=0x40)],
+                       {"disp_prm_BPM_sync": b"".join(NOTES)}, {"GetString_1_5000_Sync": 0x40})
+    assert read_param_specs(program)[0].labels is None
+
+
+def test_unknown_display_function_stays_raw():
+    program = _program([_descriptor(b"Time", 100, 10, display=0x40)], {}, {"GetString_Mystery": 0x40})
     assert read_param_specs(program)[0].labels is None
 
 

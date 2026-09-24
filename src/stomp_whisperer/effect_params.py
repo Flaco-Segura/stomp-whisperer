@@ -21,10 +21,11 @@ DSP code, so it isn't run; its symbol name says what it does:
   no name matches.
 - ``GetString_offset_N`` / ``offset_minusN`` / ``offset_minusN_05`` shift the value
   (and ``_05`` scales it by 0.5); ``..._off_to_N`` shows 0 as OFF.
-- ``GetString_A_B_Sync`` shows A..B and then tempo-synced note values from a
-  ``disp_prm_..._BPM_sync`` table, drawn with the pedal's own note glyphs. Some
-  effects only offer part of that table and which part isn't recorded here, so
-  their synced values are shown as a generic "BPM sync".
+- ``GetString_..._Sync`` shows a number range and then tempo-synced note values
+  from a ``disp_prm_..._BPM_sync`` table, drawn with the pedal's own note glyphs.
+  Their thresholds and scales were read from the disassembled functions and are
+  listed in ``_SYNC_RULES``; every effect sharing one of these names has the same
+  code (checked with a TI C6000 objdump).
 
 Anything else (e.g. delay times, whose scale depends on another parameter) is left
 as the stored number rather than guessed.
@@ -47,8 +48,35 @@ _STT_FUNC = 2
 # e.g. "offset_1", "offset1", "offset_10", "offset_minus10", "offset_minus12_05"
 _OFFSET_RULE = re.compile(r"^offset_?(minus)?(\d+)(?:_(\d+))?$", re.IGNORECASE)
 _OFF_THEN_NUMBER = re.compile(r"off_to_(\d+)$", re.IGNORECASE)
-# e.g. "0_100_Sync", "ofst_1_50_Sync", "offset_10_Sync"
-_SYNC_RULE = re.compile(r"^(?:ofst_|offset_)?(\d+)(?:_(\d+))?_Sync$", re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class _SyncRule:
+    """How a ``GetString_..._Sync`` function turns a value into text.
+
+    Values below `sync_from` are numbers: value + `offset`, except that above
+    `fine_until` each step is worth 10 (delay times: 1 ms steps, then 10 ms steps).
+    From `sync_from` on, the value picks a note from the BPM sync table, starting
+    at entry `first_note`.
+    """
+    maximum: int  # the rule was verified for parameters with this range only
+    sync_from: int
+    offset: int = 0
+    fine_until: int | None = None
+    first_note: int = 0
+
+
+_SYNC_RULES = {
+    "1_5000_Sync": _SyncRule(962, sync_from=940, offset=1, fine_until=598, first_note=1),
+    "1_2000_Sync": _SyncRule(762, sync_from=740, offset=1, fine_until=598, first_note=1),
+    "10_2500_Sync": _SyncRule(745, sync_from=731, offset=10, fine_until=589, first_note=1),
+    "offset_10_Sync": _SyncRule(835, sync_from=821, offset=10, fine_until=589, first_note=1),
+    "0_100_Sync": _SyncRule(-1, sync_from=101),
+    "0_50_Sync": _SyncRule(78, sync_from=51),
+    "10_100_Sync": _SyncRule(100, sync_from=91, offset=10),
+    "ofst_1_50_Sync": _SyncRule(77, sync_from=50, offset=1),
+}
+_ANY_MAXIMUM = -1
 
 # The pedal's font draws note values with control characters; shortest first.
 _NOTE_GLYPHS = {"\x16": "1/32", "\x17": "1/16", "\x18": "1/8", "\x19": "1/4", "\x1a": "1/2"}
@@ -148,20 +176,31 @@ def _note_label(raw: str) -> str | None:
     return note if not rest else None
 
 
-def _labels_from_rule(rule: str, maximum: int, sync_labels: list[str] | None) -> list[str] | None:
-    if (match := _SYNC_RULE.match(rule)) and sync_labels:
-        first = int(match[1])
-        if match[2]:
-            last = int(match[2])
-        else:  # "offset_N_Sync": numbers from N up to where the synced values start
-            last = first + maximum - len(sync_labels)
-        numbers = [str(v) for v in range(first, last + 1)]
-        synced = maximum + 1 - len(numbers)
-        if synced == len(sync_labels):
-            return numbers + sync_labels
-        if 0 < synced < len(sync_labels):
-            return numbers + ["BPM sync"] * synced
-        return None  # the numbers aren't a plain 1-step range; don't guess
+def _sync_labels_for(rule: _SyncRule, maximum: int, notes: list[str]) -> list[str] | None:
+    if rule.maximum not in (maximum, _ANY_MAXIMUM):
+        return None
+    labels = []
+    for value in range(maximum + 1):
+        if value >= rule.sync_from:
+            index = value - rule.sync_from + rule.first_note
+            if index >= len(notes):
+                return None
+            labels.append(notes[index])
+            continue
+        number = value
+        if rule.fine_until is not None and value > rule.fine_until:
+            number = rule.fine_until + 1 + (value - rule.fine_until - 1) * 10
+        labels.append(str(number + rule.offset))
+    return labels
+
+
+def _labels_from_rule(rule: str, maximum: int, notes: list[str] | None) -> list[str] | None:
+    if rule in _SYNC_RULES:
+        return _sync_labels_for(_SYNC_RULES[rule], maximum, notes) if notes else None
+    if rule == "1_300_Sync" and maximum == 300:  # SlapBack: 1..300 ms, then tempo sync
+        return [str(v + 1) for v in range(300)] + ["Sync"]
+    if rule == "DelayType" and maximum == 2 and notes and len(notes) > 7:  # SlapBack SubDv
+        return [notes[7], notes[6], "P-P"]
     if match := _OFFSET_RULE.match(rule):
         offset = int(match[2]) * (-1 if match[1] else 1)
         step = int(match[3]) / 10 if match[3] else 1  # "_05" = steps of 0.5
@@ -259,7 +298,7 @@ def read_param_specs(program: bytes) -> list[ParamSpec]:
         if rule and maximum < MAX_LABELS:
             suffix = re.sub(r"^_*GetString_?", "", rule)
             labels = _labels_from_rule(suffix, maximum, sync_labels)
-            if labels is None and not _SYNC_RULE.match(suffix):
+            if labels is None and not suffix.endswith("Sync") and suffix != "DelayType":
                 labels = table_labels(suffix, maximum)
         specs.append(ParamSpec(name=name, max=maximum, default=default, labels=labels))
     return specs

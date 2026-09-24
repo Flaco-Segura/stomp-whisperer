@@ -89,14 +89,15 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   parameter (name, max, default, display function). Display functions are DSP code, so
   they're interpreted by symbol name: `disp_prm_*` label tables (COMBO/STACK, 20Hz…20kHz),
   offset rules (`offset_minus12_05` → −12…+12 in 0.5 steps, `off_to_100` → OFF, 0…100) and
-  tempo-synced ranges (numbers followed by note values: 1/16, 1/8T, 1/8., 1/4×2…). The web UI
-  shows each value as the pedal would, with its range in the tooltip.
+  tempo-synced ranges (numbers followed by note values: 1/16, 1/8T, 1/8., 1/4×2…). The
+  `*_Sync` rules (delay times in 1 ms then 10 ms steps, LFO rates, where synced notes start)
+  were read from the functions disassembled with a `tic6x-elf` build of GNU objdump; a rule
+  only applies when the parameter's range matches the one it was read from. The web UI shows
+  each value as the pedal would, with its range in the tooltip.
 
 **Next steps (in order):**
-1. Delay `Time` (`GetString_1_5000_Sync` and similar) is still shown as the stored number:
-   its millisecond scale isn't a plain step and depends on the delay's Mode. Some LFO rates
-   show "BPM sync" instead of the exact note value. Comparing against the pedal's screen
-   would settle both.
+1. Confirm the note glyphs against the pedal's screen: the order is certain, but whether
+   `\x18` is an eighth or a quarter note (and so every synced label) is still inferred.
 2. Grow the web UI on top of the (still read-only) `Pedal` API: bind `<amp-knob>` to real
    parameters in the detail view now that ranges are known; drag-and-drop for rearranging
    effect chains via vendored SortableJS. (Replaces the earlier PySide6 plan — too heavy.)
