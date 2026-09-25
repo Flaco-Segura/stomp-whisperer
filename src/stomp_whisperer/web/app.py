@@ -47,10 +47,50 @@ class PatchCache:
     def slots(self, refresh: bool = False) -> list[dict]:
         with pedal_lock:
             if self._slots is None or refresh:
-                self._slots = read_all_slots()
+                self._slots = source.read_slots()
             slots = self._slots
         effect_sync.request(e.id for entry in slots if entry["patch"] for e in entry["patch"].effects)
         return slots
+
+
+class PedalSource:
+    """Patches read live from the pedal over USB MIDI."""
+
+    sandbox = False
+
+    def port(self) -> str | None:
+        return find_pedal_port()
+
+    def read_slots(self) -> list[dict]:
+        return read_all_slots()
+
+
+class DumpSource:
+    """Sandbox: patches read from `patch_NNN.bin` dumps as if the pedal were connected.
+
+    Effect metadata comes only from the cached `EffectLibrary`; nothing is read over MIDI.
+    """
+
+    sandbox = True
+
+    def __init__(self, directory: Path) -> None:
+        self.directory = directory
+
+    def port(self) -> str:
+        return f"Sandbox: {self.directory}"
+
+    def read_slots(self) -> list[dict]:
+        dumps = {}
+        for path in self.directory.glob("patch_*.bin"):
+            try:
+                dumps[int(path.stem.removeprefix("patch_"))] = path
+            except ValueError:
+                continue
+        if not dumps:
+            raise PedalNotFoundError(f"No patch_NNN.bin dumps in {self.directory}")
+        # `list --save` skips empty slots, so gaps up to the last dump are empty slots.
+        return [_slot_entry(slot, dumps[slot].read_bytes() if slot in dumps else b"", True)
+                for slot in range(1, max(dumps) + 1)]
 
 
 class EffectSync:
@@ -81,6 +121,8 @@ class EffectSync:
 
     def request(self, effect_ids, urgent: bool = False) -> None:
         """Queue effects whose metadata is missing; urgent ones jump the queue."""
+        if source.sandbox:
+            return  # no pedal to read effect files from
         with self._state:
             for effect_id in dict.fromkeys(effect_ids):
                 if effect_id == 0 or effect_id in self.library or effect_id in self._failed:
@@ -259,6 +301,14 @@ def _detail_json(entry: dict) -> dict:
 
 effect_sync = EffectSync()
 cache = PatchCache()
+source: PedalSource | DumpSource = PedalSource()
+
+
+def use_sandbox(directory: Path) -> None:
+    """Serve patches from dump files instead of the pedal."""
+    global source
+    source = DumpSource(directory)
+    cache.clear()
 
 
 def _cached_slots(refresh: bool = False) -> list[dict]:
@@ -272,11 +322,11 @@ def _cached_slots(refresh: bool = False) -> list[dict]:
 
 @app.get("/api/status")
 def status() -> dict:
-    port = find_pedal_port()
+    port = source.port()
     if port is None:
         cache.clear()  # a different pedal (or edited patches) may come back
         effect_sync.forget_pedal()
-    return {"connected": port is not None, "port": port}
+    return {"connected": port is not None, "port": port, "sandbox": source.sandbox}
 
 
 @app.get("/api/patches")

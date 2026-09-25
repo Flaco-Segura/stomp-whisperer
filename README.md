@@ -29,6 +29,18 @@ Then open http://127.0.0.1:8000 in your browser. Stop the server with `Ctrl+C`.
 If the pedal is not connected, the page shows a "Connect your pedal" modal that closes by
 itself as soon as the pedal is detected over USB.
 
+#### Sandbox mode (no pedal)
+
+```bash
+stomp-whisperer list --save dumps     # once, with the pedal connected
+stomp-whisperer serve --sandbox       # later, without it (or --sandbox DIR)
+```
+
+The UI behaves as if the pedal were connected, serving the `patch_NNN.bin` dumps instead;
+the status pill reads "Sandbox (no pedal)". Nothing is sent over MIDI, so effect names and
+parameters come only from the cache (`~/.cache/stomp-whisperer/effects.json`); effects not
+seen before show just their ID. Slots missing from the dumps are shown as empty.
+
 ### CLI commands
 
 ```bash

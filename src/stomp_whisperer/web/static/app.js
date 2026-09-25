@@ -16,6 +16,7 @@ const detailEl = document.getElementById("detail");
 
 const MESSAGES = {
   connected: { status: "Pedal connected" },
+  sandbox: { status: "Sandbox (no pedal)" },
   disconnected: {
     status: "Pedal not connected",
     title: "Connect your pedal",
@@ -299,6 +300,9 @@ refreshButton.addEventListener("click", () => loadList(true));
 
 // ---------- connection state ----------
 
+// Sandbox mode serves dumped patches as if the pedal were connected.
+const isLive = (state) => state === "connected" || state === "sandbox";
+
 function render(state, port) {
   if (state === lastState) return;
   const previous = lastState;
@@ -310,21 +314,21 @@ function render(state, port) {
   statusText.textContent = message.status;
   statusEl.title = port ?? "";
 
-  if (state === "connected") {
+  if (isLive(state)) {
     modal.hidden = true;
     loadList();
   } else {
     modalTitle.textContent = message.title;
     modalBody.innerHTML = message.body;
     modal.hidden = false;
-    if (previous === "connected") clearList();
+    if (isLive(previous)) clearList();
   }
 }
 
 async function poll() {
   try {
-    const { connected, port } = await getJson("/api/status");
-    render(connected ? "connected" : "disconnected", port);
+    const { connected, port, sandbox } = await getJson("/api/status");
+    render(sandbox ? "sandbox" : connected ? "connected" : "disconnected", port);
   } catch {
     render("offline");
   } finally {

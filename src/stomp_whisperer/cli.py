@@ -69,8 +69,17 @@ def cmd_list(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
+    from .web import app as web_app
+
+    if args.sandbox is not None:
+        if not any(args.sandbox.glob("patch_*.bin")):
+            print(f"Error: no patch_NNN.bin dumps in {args.sandbox} "
+                  "(save them with `stomp-whisperer list --save DIR`)", file=sys.stderr)
+            return 1
+        web_app.use_sandbox(args.sandbox)
+        print(f"Sandbox mode: serving patches from {args.sandbox}, the pedal is not used")
     print(f"StompWhisperer UI: http://{args.host}:{args.port}")
-    uvicorn.run("stomp_whisperer.web.app:app", host=args.host, port=args.port, log_level="warning")
+    uvicorn.run(web_app.app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 
@@ -89,6 +98,9 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="Start the local web UI")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8000)
+    serve_parser.add_argument("--sandbox", type=Path, nargs="?", const=Path("dumps"), metavar="DIR",
+                              help="Simulate a connected pedal with the dumps in DIR "
+                                   "(default: dumps)")
     serve_parser.set_defaults(func=cmd_serve)
 
     return parser

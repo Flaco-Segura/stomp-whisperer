@@ -33,7 +33,7 @@ def fake_effects(monkeypatch, tmp_path):
 
 def test_status_disconnected(monkeypatch):
     monkeypatch.setattr(web_app, "find_pedal_port", lambda: None)
-    assert client.get("/api/status").json() == {"connected": False, "port": None}
+    assert client.get("/api/status").json() == {"connected": False, "port": None, "sandbox": False}
 
 
 def test_status_connected(monkeypatch):
@@ -102,6 +102,51 @@ def test_patches_without_pedal(monkeypatch):
         raise web_app.PedalNotFoundError("not found")
 
     monkeypatch.setattr(web_app, "read_all_slots", no_pedal)
+    web_app.cache.clear()
+    assert client.get("/api/patches").status_code == 503
+
+
+def _dump_patch(name: bytes) -> bytes:
+    import struct
+
+    header = struct.pack("<4sIIII6s10s", b"PTCF", 0, 1, 2, 0, b"\x00" * 6, name.ljust(10))
+    record = (1 | 0x03000080 << 1 | 64 << 30).to_bytes(24, "little")
+    return (header + struct.pack("<2I", 0x03000080, 0)
+            + struct.pack("<4sI", b"EDTB", len(record) * 2) + record + bytes(24))
+
+
+@pytest.fixture
+def sandbox(monkeypatch, tmp_path):
+    (tmp_path / "patch_001.bin").write_bytes(_dump_patch(b"Clean"))
+    (tmp_path / "patch_003.bin").write_bytes(_dump_patch(b"Lead"))
+    monkeypatch.setattr(web_app, "source", web_app.DumpSource(tmp_path))
+    monkeypatch.setattr(web_app, "find_pedal_port", lambda: pytest.fail("pedal was used"))
+    web_app.cache.clear()
+    return tmp_path
+
+
+def test_sandbox_status(sandbox):
+    assert client.get("/api/status").json() == {
+        "connected": True, "port": f"Sandbox: {sandbox}", "sandbox": True}
+
+
+def test_sandbox_patches_come_from_dumps(sandbox):
+    first, second, third = client.get("/api/patches").json()
+    assert (first["name"], third["name"]) == ("Clean", "Lead")
+    assert second["error"] == "Slot is empty"
+    detail = client.get("/api/patches/1").json()
+    assert detail["chain"][0]["name"] == "DYN Drive"
+    assert detail["chain"][0]["info_pending"] is False
+
+
+def test_sandbox_never_fetches_effects(sandbox, tmp_path):
+    sync = web_app.EffectSync(EffectLibrary(tmp_path / "effects.json"))
+    sync.request([0x08000060])
+    assert not sync.is_pending(0x08000060)
+
+
+def test_sandbox_without_dumps(monkeypatch, tmp_path):
+    monkeypatch.setattr(web_app, "source", web_app.DumpSource(tmp_path))
     web_app.cache.clear()
     assert client.get("/api/patches").status_code == 503
 
