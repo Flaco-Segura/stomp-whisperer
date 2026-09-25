@@ -41,12 +41,28 @@ the status pill reads "Sandbox (no pedal)". Nothing is sent over MIDI, so effect
 parameters come only from the cache (`~/.cache/stomp-whisperer/effects.json`); effects not
 seen before show just their ID. Slots missing from the dumps are shown as empty.
 
+The sandbox is also where patches can be edited, in memory only (Refresh or a restart
+brings back the dumps; nothing is ever written to the pedal or to the dump files):
+
+- switch effects on/off, reorder them (◀ ▶) and turn their knobs, switches and EQ faders;
+- on user patches (slots 86–100) also rename the patch (two lines of 14 characters, as on
+  the pedal's screen), add effect slots (up to 6), pick their effect from the library and
+  remove slots. Factory patches (slots 1–85) keep their name and effects.
+
+The effect picker offers every effect in the library; to fill it with all of the pedal's
+effects, run once with the pedal connected:
+
+```bash
+stomp-whisperer effects              # reads each effect not yet in the library (~3 s each)
+```
+
 ### CLI commands
 
 ```bash
 stomp-whisperer info                 # connect and print patch storage info
 stomp-whisperer current              # dump the currently active patch (hex)
 stomp-whisperer list [--save DIR]    # list every patch slot; optionally save raw .bin dumps
+stomp-whisperer effects [--all]      # read every effect's name and parameters into the library
 ```
 
 ## Status

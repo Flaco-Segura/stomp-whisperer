@@ -2,7 +2,7 @@ import struct
 
 import pytest
 
-from stomp_whisperer.patch import PatchFormatError, parse_patch
+from stomp_whisperer.patch import PatchFormatError, format_name, parse_patch
 
 
 def _chunk(tag: bytes, payload: bytes) -> bytes:
@@ -67,3 +67,20 @@ def test_ignores_bytes_past_declared_length():
 def test_display_name_collapses_padding():
     data = _make_patch(b"x", [1], version=2, extra=_chunk(b"NAME", b"Polyphonic    Octaver   \x00"))
     assert parse_patch(data).display_name == "Polyphonic Octaver"
+
+
+@pytest.mark.parametrize("text, stored", [
+    ("  Big   Lead ", "Big Lead"),
+    ("OverDrive +Delay", "OverDrive     +Delay"),  # as Zoom stores it
+    ("Smoking On The Window", "Smoking On    The Window"),
+    ("Abcdefghij Klmnopqrstuvwxyz", "Abcdefghij Klmnopqrstuvwxyz"),  # no space fits: split at 14
+    ("x" * 28, "x" * 28),
+])
+def test_format_name(text, stored):
+    assert format_name(text) == stored
+
+
+@pytest.mark.parametrize("text", ["", "   ", "Señal", "x" * 29])
+def test_format_name_rejects(text):
+    with pytest.raises(ValueError):
+        format_name(text)

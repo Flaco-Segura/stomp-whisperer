@@ -7,6 +7,7 @@ import sys
 
 from pathlib import Path
 
+from .effects import INDEX_FILE, EffectFormatError, EffectLibrary, parse_effect_file, parse_effect_index
 from .patch import PatchFormatError, parse_patch
 from .pedal import Pedal, PedalNotFoundError
 
@@ -66,6 +67,33 @@ def cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_effects(args: argparse.Namespace) -> int:
+    library = EffectLibrary()
+    with Pedal() as pedal:
+        pedal.pc_mode_on()
+        try:
+            files = parse_effect_index(pedal.download_file(INDEX_FILE))
+            missing = sorted((effect_id, file) for effect_id, file in files.items()
+                             if args.all or effect_id not in library)
+            print(f"{len(files)} effects on the pedal, {len(files) - len(missing)} already known; "
+                  f"reading {len(missing)} (about 3 s each)")
+            for count, (effect_id, file) in enumerate(missing, 1):
+                try:
+                    info = parse_effect_file(pedal.download_file(file), file)
+                except TimeoutError:
+                    raise
+                except (EffectFormatError, OSError) as exc:
+                    print(f"[{count}/{len(missing)}] {file}: skipped ({exc})")
+                    continue
+                library.add(info)
+                library.save()  # after each one, so an interrupted run keeps its progress
+                print(f"[{count}/{len(missing)}] {info.group:<8} {info.name}")
+        finally:
+            pedal.pc_mode_off()
+    print(f"Effect library: {library.path}")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -94,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
     list_parser.add_argument("--save", type=Path, metavar="DIR",
                              help="Also save each raw patch as DIR/patch_NNN.bin")
     list_parser.set_defaults(func=cmd_list)
+
+    effects_parser = subparsers.add_parser(
+        "effects", help="Read every effect's name and parameters from the pedal into the library")
+    effects_parser.add_argument("--all", action="store_true",
+                                help="Read effects already in the library again too")
+    effects_parser.set_defaults(func=cmd_effects)
 
     serve_parser = subparsers.add_parser("serve", help="Start the local web UI")
     serve_parser.add_argument("--host", default="127.0.0.1")

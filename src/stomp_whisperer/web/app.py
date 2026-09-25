@@ -8,9 +8,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from ..effects import INDEX_FILE, EffectFormatError, EffectLibrary, parse_effect_file, parse_effect_index
-from ..patch import Effect, Patch, PatchFormatError, parse_patch
+from ..patch import (PARAM_COUNT, Effect, Patch, PatchFormatError, format_name, param_limit,
+                     parse_patch)
 from ..pedal import Pedal, PedalNotFoundError, find_pedal_port
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -256,6 +258,7 @@ def _param_json(param, value: int) -> dict:
         "max": param.max,
         "default": param.default,
         "range": value_range,
+        "labels": param.labels,
         "options": ([param.display(v) for v in range(param.max + 1)]
                     if param.max is not None and param.max < MAX_SWITCH_POSITIONS else None),
         "center": _center(param),
@@ -295,6 +298,9 @@ def _detail_json(entry: dict) -> dict:
     body = _summary_json(entry)
     patch: Patch | None = entry["patch"]
     body["description"] = _description(patch) if patch else ""
+    body["sandbox"] = source.sandbox
+    body["factory"] = entry["slot"] <= FACTORY_SLOTS
+    body["max_effects"] = MAX_EFFECTS
     body["chain"] = [_effect_json(i, e) for i, e in enumerate(patch.effects, 1)] if patch else []
     return body
 
@@ -343,6 +349,140 @@ def get_patch(slot: int) -> dict:
     if entry["patch"]:
         effect_sync.request((e.id for e in entry["patch"].effects), urgent=True)
     return _detail_json(entry)
+
+
+@app.get("/api/effects")
+def list_effects() -> list[dict]:
+    """Every effect in the library, in the pedal's order (the id's high byte is its category)."""
+    return [{"id": f"{info.id:08x}", "name": info.name, "group": info.group}
+            for info in sorted(effect_sync.library, key=lambda info: info.id)]
+
+
+# ---------- sandbox editing (in memory only; never sent to the pedal) ----------
+
+# Slots 1–85 hold Zoom's factory patches: their effects can be tweaked, toggled and
+# reordered, but they can't be renamed or have effects added, removed or replaced.
+FACTORY_SLOTS = 85
+MAX_EFFECTS = 6
+
+
+class EffectChange(BaseModel):
+    enabled: bool | None = None
+    id: str | None = None  # hex, as the API reports it; resets the parameters to defaults
+    params: dict[int, int] | None = None  # parameter index -> raw value
+
+
+class Rename(BaseModel):
+    name: str
+
+
+class Move(BaseModel):
+    to: int  # new 1-based position
+
+
+def _edit(slot: int, position: int | None, edit, structural: bool = False) -> dict:
+    """Apply `edit(patch, index)` to a cached patch and return its new detail."""
+    if not source.sandbox:
+        raise HTTPException(status_code=403, detail="Patches can only be edited in sandbox mode")
+    slots = _cached_slots()
+    if not 1 <= slot <= len(slots):
+        raise HTTPException(status_code=404, detail=f"No patch slot {slot}")
+    entry = slots[slot - 1]
+    patch: Patch | None = entry["patch"]
+    if patch is None:
+        raise HTTPException(status_code=409, detail=f"Slot {slot} has no readable patch")
+    if structural and slot <= FACTORY_SLOTS:
+        raise HTTPException(status_code=403, detail="Factory patches can't be renamed or have "
+                                                    "effects added, removed or replaced")
+    with pedal_lock:
+        if position is not None and not 1 <= position <= len(patch.effects):
+            raise HTTPException(status_code=404, detail=f"No effect at position {position}")
+        edit(patch, None if position is None else position - 1)
+        patch.effect_ids = [e.id for e in patch.effects]
+    return _detail_json(entry)
+
+
+def _add_effect(patch: Patch, _index) -> None:
+    if len(patch.effects) >= MAX_EFFECTS:
+        raise HTTPException(status_code=409, detail=f"A patch holds at most {MAX_EFFECTS} effects")
+    patch.effects.append(Effect(id=0, enabled=False, params=[0] * PARAM_COUNT))
+
+
+def _change_effect(change: EffectChange):
+    def edit(patch: Patch, index: int) -> None:
+        effect = patch.effects[index]
+        info = effect_sync.library.get(effect.id)
+        if change.id is not None:
+            try:
+                info = effect_sync.library.get(int(change.id, 16))
+            except ValueError:
+                info = None
+            if info is None:
+                raise HTTPException(status_code=422, detail=f"Unknown effect {change.id}")
+        elif change.enabled is not None and effect.id == 0:
+            raise HTTPException(status_code=409, detail="Choose an effect for this slot first")
+        # Validate everything before changing anything.
+        params = change.params or {}
+        for param_index, value in params.items():
+            if not 0 <= param_index < PARAM_COUNT:
+                raise HTTPException(status_code=422, detail=f"No parameter {param_index + 1}")
+            known = info.params[param_index] if info and param_index < len(info.params) else None
+            limit = known.max if known and known.max is not None else param_limit(param_index)
+            if not 0 <= value <= limit:
+                raise HTTPException(status_code=422,
+                                    detail=f"Parameter {param_index + 1} must be 0 to {limit}")
+
+        if change.id is not None:
+            defaults = [p.default or 0 for p in info.params]
+            effect.id, effect.enabled = info.id, True
+            effect.params = (defaults + [0] * PARAM_COUNT)[:PARAM_COUNT]
+        if change.enabled is not None:
+            effect.enabled = change.enabled
+        for param_index, value in params.items():
+            effect.params[param_index] = value
+    return edit
+
+
+def _remove_effect(patch: Patch, index: int) -> None:
+    if len(patch.effects) == 1:
+        raise HTTPException(status_code=409, detail="A patch needs at least one effect slot")
+    patch.effects.pop(index)
+
+
+@app.patch("/api/patches/{slot}")
+def rename_patch(slot: int, rename: Rename) -> dict:
+    try:
+        name = format_name(rename.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    def edit(patch: Patch, _index) -> None:
+        patch.name = name
+    return _edit(slot, None, edit, structural=True)
+
+
+@app.post("/api/patches/{slot}/effects")
+def add_effect(slot: int) -> dict:
+    return _edit(slot, None, _add_effect, structural=True)
+
+
+@app.patch("/api/patches/{slot}/effects/{position}")
+def change_effect(slot: int, position: int, change: EffectChange) -> dict:
+    return _edit(slot, position, _change_effect(change), structural=change.id is not None)
+
+
+@app.delete("/api/patches/{slot}/effects/{position}")
+def remove_effect(slot: int, position: int) -> dict:
+    return _edit(slot, position, _remove_effect, structural=True)
+
+
+@app.post("/api/patches/{slot}/effects/{position}/move")
+def move_effect(slot: int, position: int, move: Move) -> dict:
+    def edit(patch: Patch, index: int) -> None:
+        if not 1 <= move.to <= len(patch.effects):
+            raise HTTPException(status_code=422, detail=f"No position {move.to}")
+        patch.effects.insert(move.to - 1, patch.effects.pop(index))
+    return _edit(slot, position, edit)
 
 
 # Mounted last so /api/* routes take precedence.

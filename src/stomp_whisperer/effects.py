@@ -193,3 +193,6 @@ class EffectLibrary:
 
     def __contains__(self, effect_id: int) -> bool:
         return effect_id in self._effects
+
+    def __iter__(self):
+        return iter(self._effects.values())

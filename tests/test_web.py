@@ -85,10 +85,11 @@ def test_patch_detail(monkeypatch, fake_effects):
     assert (known["name"], known["group"]) == ("DYN Drive", "DRIVE")
     assert known["params"] == [
         {"name": "Gain", "explanation": "Adjusts the gain.", "value": 64, "display": "64",
-         "max": 100, "default": 78, "range": "0 to 100", "options": None,
+         "max": 100, "default": 78, "range": "0 to 100", "labels": None, "options": None,
          "center": None},
         {"name": "Mode", "explanation": "", "value": 0, "display": "COMBO",
-         "max": 1, "default": 1, "range": "COMBO to STACK", "options": ["COMBO", "STACK"],
+         "max": 1, "default": 1, "range": "COMBO to STACK", "labels": ["COMBO", "STACK"],
+         "options": ["COMBO", "STACK"],
          "center": None},
     ]
     assert unknown["name"] is None
@@ -109,10 +110,10 @@ def test_patches_without_pedal(monkeypatch):
 def _dump_patch(name: bytes) -> bytes:
     import struct
 
-    header = struct.pack("<4sIIII6s10s", b"PTCF", 0, 1, 2, 0, b"\x00" * 6, name.ljust(10))
+    header = struct.pack("<4sIIII6s10s", b"PTCF", 0, 1, 1, 0, b"\x00" * 6, name.ljust(10))
     record = (1 | 0x03000080 << 1 | 64 << 30).to_bytes(24, "little")
-    return (header + struct.pack("<2I", 0x03000080, 0)
-            + struct.pack("<4sI", b"EDTB", len(record) * 2) + record + bytes(24))
+    return (header + struct.pack("<I", 0x03000080)
+            + struct.pack("<4sI", b"EDTB", len(record)) + record)
 
 
 @pytest.fixture
@@ -143,6 +144,93 @@ def test_sandbox_never_fetches_effects(sandbox, tmp_path):
     sync = web_app.EffectSync(EffectLibrary(tmp_path / "effects.json"))
     sync.request([0x08000060])
     assert not sync.is_pending(0x08000060)
+
+
+@pytest.fixture
+def user_patch(sandbox):
+    """Slot 86, the first one past the factory patches."""
+    (sandbox / "patch_086.bin").write_bytes(_dump_patch(b"Mine"))
+    web_app.cache.clear()
+    return 86
+
+
+def _chain(body):
+    return [(fx["id"], fx["enabled"]) for fx in body["chain"]]
+
+
+def test_list_effects():
+    assert client.get("/api/effects").json() == [
+        {"id": "03000080", "name": "DYN Drive", "group": "DRIVE"}]
+
+
+def test_editing_needs_sandbox(monkeypatch):
+    monkeypatch.setattr(web_app, "read_all_slots", _fake_slots)
+    web_app.cache.clear()
+    assert client.patch("/api/patches/1/effects/1", json={"enabled": True}).status_code == 403
+    assert client.post("/api/patches/1/effects").status_code == 403
+
+
+def test_add_and_choose_effect(user_patch):
+    body = client.post(f"/api/patches/{user_patch}/effects").json()
+    assert body["factory"] is False and body["sandbox"] is True
+    assert _chain(body) == [("03000080", True), ("00000000", False)]
+    body = client.patch(f"/api/patches/{user_patch}/effects/2", json={"id": "03000080"}).json()
+    new = body["chain"][1]
+    assert (new["name"], new["enabled"]) == ("DYN Drive", True)
+    assert [p["value"] for p in new["params"]] == [78, 1]  # defaults
+    summary = client.get("/api/patches").json()[user_patch - 1]
+    assert summary["effect_count"] == 2
+
+
+def test_change_params_and_toggle(user_patch):
+    url = f"/api/patches/{user_patch}/effects/1"
+    body = client.patch(url, json={"enabled": False, "params": {"0": 90, "1": 1}}).json()
+    fx = body["chain"][0]
+    assert fx["enabled"] is False
+    assert [(p["value"], p["display"]) for p in fx["params"]] == [(90, "90"), (1, "STACK")]
+    # Out of range: nothing changes.
+    response = client.patch(url, json={"enabled": True, "params": {"0": 101}})
+    assert response.status_code == 422
+    assert client.get(f"/api/patches/{user_patch}").json()["chain"][0]["enabled"] is False
+
+
+def test_move_and_remove(user_patch):
+    client.post(f"/api/patches/{user_patch}/effects")
+    body = client.post(f"/api/patches/{user_patch}/effects/2/move", json={"to": 1}).json()
+    assert _chain(body) == [("00000000", False), ("03000080", True)]
+    body = client.delete(f"/api/patches/{user_patch}/effects/1").json()
+    assert _chain(body) == [("03000080", True)]
+    assert client.delete(f"/api/patches/{user_patch}/effects/1").status_code == 409
+
+
+def test_patch_holds_at_most_six_effects(user_patch):
+    for _ in range(5):
+        client.post(f"/api/patches/{user_patch}/effects")
+    assert client.post(f"/api/patches/{user_patch}/effects").status_code == 409
+
+
+def test_factory_patches_keep_their_effects(sandbox):
+    assert client.get("/api/patches/1").json()["factory"] is True
+    assert client.post("/api/patches/1/effects").status_code == 403
+    assert client.delete("/api/patches/1/effects/1").status_code == 403
+    assert client.patch("/api/patches/1/effects/1", json={"id": "03000080"}).status_code == 403
+    body = client.patch("/api/patches/1/effects/1", json={"enabled": False}).json()
+    assert body["chain"][0]["enabled"] is False
+
+
+def test_rename_user_patch(user_patch):
+    body = client.patch(f"/api/patches/{user_patch}", json={"name": "OverDrive +Delay"}).json()
+    assert body["name"] == "OverDrive +Delay"
+    assert client.get("/api/patches").json()[user_patch - 1]["name"] == "OverDrive +Delay"
+    response = client.patch(f"/api/patches/{user_patch}", json={"name": "Señal"})
+    assert response.status_code == 422
+    assert client.patch("/api/patches/1", json={"name": "Mine now"}).status_code == 403
+
+
+def test_refresh_discards_edits(user_patch):
+    client.patch(f"/api/patches/{user_patch}/effects/1", json={"enabled": False})
+    client.get("/api/patches?refresh=true")
+    assert client.get(f"/api/patches/{user_patch}").json()["chain"][0]["enabled"] is True
 
 
 def test_sandbox_without_dumps(monkeypatch, tmp_path):

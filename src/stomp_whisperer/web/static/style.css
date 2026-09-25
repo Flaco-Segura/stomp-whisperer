@@ -286,6 +286,128 @@ body {
 .stomp.is-on .stomp-led { background: var(--red); box-shadow: 0 0 8px var(--red); }
 .stomp.is-on .stomp-state { color: var(--ink); }
 
+/* ---------- sandbox editing ---------- */
+
+.sandbox-note {
+  max-width: 40rem;
+  margin: 0.9rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 2px solid var(--amber);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-dim);
+  background: rgba(255, 181, 71, 0.06);
+}
+.sandbox-note strong { color: var(--amber); font-weight: 600; }
+.name-input {
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 -0.35rem;
+  padding: 0 0.35rem;
+  border: 1px solid transparent;
+  border-bottom-color: var(--panel-line);
+  border-radius: 0.35rem 0.35rem 0 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+}
+.name-input:hover { border-bottom-color: rgba(255, 181, 71, 0.5); }
+.name-input:focus {
+  outline: none;
+  border-color: var(--amber);
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.3);
+}
+.edit-error { margin: 0.6rem 0 0; font-size: 0.85rem; }
+
+.stomp-tool,
+.stomp-switch,
+.add-slot {
+  font: inherit;
+  color: var(--ink-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--panel-line);
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+.stomp-tool {
+  width: 1.6rem;
+  height: 1.5rem;
+  padding: 0;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+.stomp-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  font-size: 0.75rem;
+}
+.stomp.is-on .stomp-switch { border-color: rgba(255, 75, 62, 0.45); }
+.stomp-tool:hover:not(:disabled),
+.stomp-switch:hover:not(:disabled),
+.add-slot:hover { color: var(--amber); border-color: var(--amber); }
+.stomp-tool.is-remove:hover:not(:disabled) { color: var(--red); border-color: var(--red); }
+.stomp-tool:disabled,
+.stomp-switch:disabled { opacity: 0.35; cursor: default; }
+.stomp-tool:focus-visible,
+.stomp-switch:focus-visible,
+.add-slot:focus-visible,
+.effect-picker:focus-visible,
+.eq-band.is-editable:focus-visible,
+.switch-options button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.effect-picker {
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 0.35rem;
+  font: inherit;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.stomp.is-empty:has(.effect-picker) { justify-content: flex-start; }
+.stomp.is-empty .effect-picker { margin-top: 0.8rem; font-weight: 400; }
+.effect-picker option,
+.effect-picker optgroup { color: var(--ink); background: #1d1c1f; }
+
+.stomp.is-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 9rem;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+}
+.add-slot {
+  width: 100%;
+  height: 100%;
+  min-height: 9rem;
+  border: 1px dashed rgba(255, 181, 71, 0.35);
+  border-radius: 0.9rem;
+  font-size: 0.9rem;
+  background: none;
+}
+
+.switch-options button {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  cursor: pointer;
+}
+.eq-band.is-editable { cursor: ns-resize; touch-action: none; outline: none; border-radius: 0.3rem; }
+
 .stomp-name {
   margin: 0.6rem 0 0.8rem;
   font-family: var(--font-display);

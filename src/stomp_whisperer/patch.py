@@ -42,6 +42,12 @@ _HEADER = struct.Struct("<4sIIII6s10s")
 _EDTB_RECORD_SIZE = 24
 _ID_BITS = 29
 _PARAM_BITS = (12, 12, 12, 12, 12, 8, 8, 8, 12, 12, 12, 12)
+PARAM_COUNT = len(_PARAM_BITS)
+
+
+def param_limit(index: int) -> int:
+    """Largest value the EDTB record can store for parameter `index` (0-based)."""
+    return (1 << _PARAM_BITS[index]) - 1
 
 
 class PatchFormatError(ValueError):
@@ -68,6 +74,34 @@ class Patch:
     def display_name(self) -> str:
         """Name with the pedal's two-line padding collapsed to single spaces."""
         return " ".join(self.name.split())
+
+
+# The pedal shows a name on two lines of 14 characters; Zoom pads the first line
+# with spaces so words aren't split across them ("OverDrive     +Delay").
+NAME_LINE = 14
+NAME_LENGTH = 2 * NAME_LINE
+
+
+def format_name(text: str) -> str:
+    """Lay out a new patch name the way Zoom's own are stored.
+
+    Words that don't fit the first line move to the second; a name with no space to
+    break at is split at the line end. Raises ValueError if it can't fit or be shown.
+    """
+    name = " ".join(text.split())
+    if not name:
+        raise ValueError("The name can't be empty")
+    if any(not " " <= char <= "~" for char in name):
+        raise ValueError("Only plain ASCII letters, digits and symbols can be shown on the pedal")
+    if len(name) <= NAME_LINE:
+        return name
+    cut = name.rfind(" ", 0, NAME_LINE)  # a full first line would run into the second
+    splits = [(name[:cut], name[cut + 1:])] if cut > 0 else []
+    splits.append((name[:NAME_LINE], name[NAME_LINE:].lstrip()))
+    for first, second in splits:
+        if len(second) <= NAME_LINE:
+            return first.ljust(NAME_LINE) + second
+    raise ValueError(f"The name doesn't fit the pedal's two lines of {NAME_LINE} characters")
 
 
 def _decode_name(raw: bytes) -> str:
