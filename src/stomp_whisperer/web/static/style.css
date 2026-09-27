@@ -286,7 +286,7 @@ body {
 .stomp.is-on .stomp-led { background: var(--red); box-shadow: 0 0 8px var(--red); }
 .stomp.is-on .stomp-state { color: var(--ink); }
 
-/* ---------- sandbox editing ---------- */
+/* ---------- editing ---------- */
 
 .sandbox-note {
   max-width: 40rem;
@@ -299,6 +299,35 @@ body {
   background: rgba(255, 181, 71, 0.06);
 }
 .sandbox-note strong { color: var(--amber); font-weight: 600; }
+
+.save-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+.save-bar button {
+  padding: 0.4rem 0.95rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+.save-bar .save-button:not(:disabled) {
+  border-color: var(--amber);
+  color: #1a1407;
+  background: var(--amber);
+  font-weight: 600;
+}
+.save-bar .save-button:hover:not(:disabled) { box-shadow: 0 0 12px var(--amber-glow); }
+.save-bar .discard-button:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+.save-bar button:disabled { opacity: 0.4; cursor: default; }
+.save-status { font-size: 0.8rem; color: var(--ink-dim); }
+.unsaved-dot { color: var(--amber); }
 .name-input {
   width: 100%;
   max-width: 34rem;

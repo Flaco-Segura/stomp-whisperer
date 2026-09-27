@@ -2,7 +2,8 @@ import struct
 
 import pytest
 
-from stomp_whisperer.patch import PatchFormatError, format_name, parse_patch
+from stomp_whisperer.patch import (PRM2_PREAMP_SLOTS, Effect, PatchFormatError, encode_patch,
+                                   format_name, parse_patch)
 
 
 def _chunk(tag: bytes, payload: bytes) -> bytes:
@@ -84,3 +85,59 @@ def test_format_name(text, stored):
 def test_format_name_rejects(text):
     with pytest.raises(ValueError):
         format_name(text)
+
+
+def _v2_patch(effects: list[tuple[int, bool, list[int]]], prm2: int) -> bytes:
+    ids = [effect_id for effect_id, _enabled, _params in effects]
+    body = struct.pack(f"<{len(ids)}I", *ids)
+    body += _chunk(b"TXJ1", b"") + _chunk(b"TXE1", b"desc\x00\x00\x00\x00")
+    body += _chunk(b"EDTB", b"".join(_edtb_record(*e) for e in effects))
+    body += _chunk(b"PRM2", prm2.to_bytes(32, "little"))
+    body += _chunk(b"NAME", b"Two Effects".ljust(28) + b"\x00" * 4)
+    length = 36 + len(body)
+    header = struct.pack("<4sIIII6s10s", b"PTCF", length, 2, len(ids), 0x040000,
+                         b"\x00" * 6, b"Two Effect")
+    return header + body
+
+
+def _prm2(patch) -> int:
+    return int.from_bytes(patch.chunks["PRM2"], "little")
+
+
+PREAMP_ID, DELAY_ID = 0x07000010, 0x0A000020
+TEMPO = 120 << 244
+
+
+def test_encode_roundtrips_byte_for_byte():
+    data = _v2_patch([(PREAMP_ID, True, [5, 6]), (DELAY_ID, False, [7])],
+                     TEMPO | 1 << PRM2_PREAMP_SLOTS | 1 << 85)
+    assert encode_patch(parse_patch(data + b"stale padding")) == data
+
+
+def test_encode_moves_slot_fields_with_their_effects():
+    # Preamp in slot 1, slot 2 being edited; swap them.
+    patch = parse_patch(_v2_patch([(PREAMP_ID, True, [1]), (DELAY_ID, True, [2])],
+                                  TEMPO | 1 << PRM2_PREAMP_SLOTS | 1 << 85))
+    patch.effects.reverse()
+    patch.name = "Swapped"
+    again = parse_patch(encode_patch(patch))
+    assert [e.id for e in again.effects] == [DELAY_ID, PREAMP_ID] == again.effect_ids
+    assert again.effects[1].params[0] == 1
+    assert _prm2(again) == TEMPO | 1 << (PRM2_PREAMP_SLOTS + 1)  # edit slot follows: now 0
+    assert again.name == "Swapped"
+
+
+def test_encode_takes_preamp_flags_and_new_effects():
+    patch = parse_patch(_v2_patch([(DELAY_ID, True, [1])], TEMPO))
+    patch.effects.append(Effect(id=PREAMP_ID, enabled=True, params=[0] * 12))
+    again = parse_patch(encode_patch(patch, preamp=[False, True]))
+    assert len(again.effects) == 2
+    assert _prm2(again) == TEMPO | 1 << (PRM2_PREAMP_SLOTS + 1)
+    assert int.from_bytes(encode_patch(again)[4:8], "little") == 36 + 8 + 5 * 8 + 8 + 48 + 32 + 32
+
+
+def test_encode_rejects_out_of_range_params():
+    patch = parse_patch(_v2_patch([(DELAY_ID, True, [1])], TEMPO))
+    patch.effects[0].params[5] = 256  # an 8-bit parameter
+    with pytest.raises(ValueError):
+        encode_patch(patch)

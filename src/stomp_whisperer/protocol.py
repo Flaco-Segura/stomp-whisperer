@@ -7,6 +7,8 @@ https://github.com/mungewell/zoom-zt2
 All functions here work with SysEx *bodies* (no leading 0xF0 / trailing 0xF7).
 """
 
+import binascii
+
 PORT_NAME_HINT = "ZOOM MS Plus Series"
 
 # Device ID shared by the whole "Plus" series (not model-specific).
@@ -44,6 +46,28 @@ def patch_download(location: int, bank_size: int) -> list[int]:
         0x52, 0x00, DEVICE_ID, 0x46, 0x00, 0x00,
         bank & 0x7F, bank >> 7,
         loc & 0x7F, loc >> 7,
+    ]
+
+
+def encode_checksum(data: bytes) -> list[int]:
+    """The 5-byte, 7-bit-packed CRC32 trailer for `data` (inverse of decode_checksum)."""
+    crc = binascii.crc32(data) ^ 0xFFFFFFFF
+    return [crc & 0x7F, (crc >> 7) & 0x7F, (crc >> 14) & 0x7F, (crc >> 21) & 0x7F,
+            (crc >> 28) & 0x0F]
+
+
+def patch_upload(location: int, bank_size: int, data: bytes) -> list[int]:
+    """Store `data` in a patch slot. Same layout as the pedal's reply to patch_download."""
+    bank = (location - 1) // bank_size
+    loc = location - (bank * bank_size) - 1
+    length = len(data)
+    return [
+        0x52, 0x00, DEVICE_ID, 0x45, 0x00, 0x00,
+        bank & 0x7F, bank >> 7,
+        loc & 0x7F, loc >> 7,
+        length & 0x7F, (length >> 7) & 0x7F,
+        *pack_8to7(data),
+        *encode_checksum(data),
     ]
 
 

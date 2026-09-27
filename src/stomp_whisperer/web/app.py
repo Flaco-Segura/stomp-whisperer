@@ -11,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..effects import INDEX_FILE, EffectFormatError, EffectLibrary, parse_effect_file, parse_effect_index
-from ..patch import (PARAM_COUNT, Effect, Patch, PatchFormatError, format_name, param_limit,
-                     parse_patch)
+from ..patch import (PARAM_COUNT, Effect, Patch, PatchFormatError, encode_patch, format_name,
+                     param_limit, parse_patch)
 from ..pedal import Pedal, PedalNotFoundError, find_pedal_port
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -201,7 +201,8 @@ def read_all_slots() -> list[dict]:
 
 
 def _slot_entry(slot: int, data: bytes, checksum_ok: bool) -> dict:
-    entry = {"slot": slot, "checksum_ok": checksum_ok, "patch": None, "error": None}
+    entry = {"slot": slot, "checksum_ok": checksum_ok, "patch": None, "error": None,
+             "unsaved": False}
     if not data:
         entry["error"] = "Slot is empty"
         return entry
@@ -291,6 +292,7 @@ def _summary_json(entry: dict) -> dict:
                     for e in effects],
         "checksum_ok": entry["checksum_ok"],
         "error": entry["error"],
+        "unsaved": entry["unsaved"],
     }
 
 
@@ -300,6 +302,8 @@ def _detail_json(entry: dict) -> dict:
     body["description"] = _description(patch) if patch else ""
     body["sandbox"] = source.sandbox
     body["factory"] = entry["slot"] <= FACTORY_SLOTS
+    body["editable"] = patch is not None
+    body["savable"] = not source.sandbox and entry["slot"] > FACTORY_SLOTS and patch is not None
     body["max_effects"] = MAX_EFFECTS
     body["chain"] = [_effect_json(i, e) for i, e in enumerate(patch.effects, 1)] if patch else []
     return body
@@ -358,7 +362,7 @@ def list_effects() -> list[dict]:
             for info in sorted(effect_sync.library, key=lambda info: info.id)]
 
 
-# ---------- sandbox editing (in memory only; never sent to the pedal) ----------
+# ---------- editing (in memory; only the save endpoint writes to the pedal) ----------
 
 # Slots 1–85 hold Zoom's factory patches: their effects can be tweaked, toggled and
 # reordered, but they can't be renamed or have effects added, removed or replaced.
@@ -382,8 +386,6 @@ class Move(BaseModel):
 
 def _edit(slot: int, position: int | None, edit, structural: bool = False) -> dict:
     """Apply `edit(patch, index)` to a cached patch and return its new detail."""
-    if not source.sandbox:
-        raise HTTPException(status_code=403, detail="Patches can only be edited in sandbox mode")
     slots = _cached_slots()
     if not 1 <= slot <= len(slots):
         raise HTTPException(status_code=404, detail=f"No patch slot {slot}")
@@ -399,6 +401,7 @@ def _edit(slot: int, position: int | None, edit, structural: bool = False) -> di
             raise HTTPException(status_code=404, detail=f"No effect at position {position}")
         edit(patch, None if position is None else position - 1)
         patch.effect_ids = [e.id for e in patch.effects]
+        entry["unsaved"] = True
     return _detail_json(entry)
 
 
@@ -483,6 +486,82 @@ def move_effect(slot: int, position: int, move: Move) -> dict:
             raise HTTPException(status_code=422, detail=f"No position {move.to}")
         patch.effects.insert(move.to - 1, patch.effects.pop(index))
     return _edit(slot, position, edit)
+
+
+# ---------- writing to the pedal (explicit, user slots only) ----------
+
+
+def _live_entry(slot: int) -> dict:
+    if source.sandbox:
+        raise HTTPException(status_code=403, detail="There's no pedal in sandbox mode")
+    slots = _cached_slots()
+    if not 1 <= slot <= len(slots):
+        raise HTTPException(status_code=404, detail=f"No patch slot {slot}")
+    return slots[slot - 1]
+
+
+def _preamp_flags(patch: Patch) -> list[bool | None]:
+    """Per effect, whether it's a preamp; None where the effect's group isn't known."""
+    flags = []
+    for effect in patch.effects:
+        info = effect_sync.library.get(effect.id)
+        flags.append(False if effect.id == 0 else info.group == "PREAMP" if info else None)
+    return flags
+
+
+def _pedal_call(action):
+    """Run `action(pedal, info)` in PC mode, holding the pedal for the whole conversation."""
+    try:
+        with pedal_lock, Pedal() as pedal:
+            pedal.pc_mode_on()
+            try:
+                return action(pedal, pedal.patch_check())
+            finally:
+                pedal.pc_mode_off()
+    except PedalNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+def _reload_entry(entry: dict, data: bytes, checksum_ok: bool) -> None:
+    entry.update(_slot_entry(entry["slot"], data, checksum_ok))
+
+
+@app.post("/api/patches/{slot}/save")
+def save_patch(slot: int) -> dict:
+    """Write the slot's patch, as edited, to the pedal; then show it as read back."""
+    entry = _live_entry(slot)
+    if slot <= FACTORY_SLOTS:
+        raise HTTPException(status_code=403, detail="Only user patches (slots "
+                                                    f"{FACTORY_SLOTS + 1}+) can be saved to the pedal")
+    patch: Patch | None = entry["patch"]
+    if patch is None:
+        raise HTTPException(status_code=409, detail=f"Slot {slot} has no readable patch")
+    if any(e.id != 0 and e.id not in effect_sync.library for e in patch.effects):
+        raise HTTPException(status_code=409, detail="Some effects haven't been read from the pedal "
+                                                    "yet; wait for their names to show and try again")
+    try:
+        data = encode_patch(patch, _preamp_flags(patch))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    stored = _pedal_call(lambda pedal, info: pedal.upload_patch(slot, info, data))
+    _reload_entry(entry, stored, True)
+    return _detail_json(entry)
+
+
+@app.post("/api/patches/{slot}/revert")
+def revert_patch(slot: int) -> dict:
+    """Drop the slot's unsaved edits by reading it from the pedal again."""
+    entry = _live_entry(slot)
+
+    def read(pedal, info):
+        data, checksum_ok = pedal.download_patch(slot, info.bank_size)
+        return bytes(data), checksum_ok
+    _reload_entry(entry, *_pedal_call(read))
+    return _detail_json(entry)
 
 
 # Mounted last so /api/* routes take precedence.

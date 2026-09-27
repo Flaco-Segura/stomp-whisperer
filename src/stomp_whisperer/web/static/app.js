@@ -68,6 +68,11 @@ function setListState(text) {
   listState.hidden = !text;
 }
 
+function updateList(patches) {
+  hasUnsaved = patches.some((patch) => patch.unsaved);
+  renderList(patches);
+}
+
 function renderList(patches) {
   slotsEl.replaceChildren(...patches.map((patch) => {
     const isEmpty = patch.effect_count === 0;
@@ -84,7 +89,8 @@ function renderList(patches) {
       onclick: () => selectSlot(patch.slot),
     },
       el("span", { class: "slot-number" }, slotLabel(patch.slot)),
-      el("span", { class: "slot-name" }, patch.name ?? "(unreadable)"),
+      el("span", { class: "slot-name" }, patch.name ?? "(unreadable)",
+        patch.unsaved ? el("span", { class: "unsaved-dot", title: "Unsaved changes" }, " •") : null),
       leds,
       el("span", { class: "slot-count" }, count),
     );
@@ -93,13 +99,17 @@ function renderList(patches) {
   }));
 }
 
+let hasUnsaved = false;
+
 async function loadList(refresh = false) {
+  if (refresh && hasUnsaved && !confirm("Some patches have unsaved changes. Read every patch " +
+      "from the pedal again and lose them?")) return;
   refreshButton.disabled = true;
   setListState("Reading patches from the pedal…");
   if (refresh) slotsEl.replaceChildren();
   try {
     const patches = await getJson(`/api/patches${refresh ? "?refresh=true" : ""}`);
-    renderList(patches);
+    updateList(patches);
     setListState(null);
     const fromHash = Number(location.hash.match(/^#slot-(\d+)$/)?.[1]);
     const initial = selectedSlot ?? (fromHash || null);
@@ -141,7 +151,7 @@ function renderRawParam(param, index) {
 }
 
 // Few positions (Mode, Ratio…): shown like a switch with the active option lit.
-// `onEdit(value)` makes the options clickable (sandbox only).
+// `onEdit(value)` makes the options clickable.
 function renderSwitch(param, onEdit) {
   const items = param.options.map((option, value) =>
     el("li", { class: value === param.value ? "is-active" : "" },
@@ -196,7 +206,7 @@ function isEqBand(param) {
 
 // Faders like a graphic EQ: 0 in the middle, a bar up or down to the value,
 // and a line joining the bands to show the curve. `onEdit(band, value)` makes the
-// faders draggable and keyboard-operable (sandbox only).
+// faders draggable and keyboard-operable.
 function renderEq(bands, onEdit) {
   const curve = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   curve.setAttribute("class", "eq-curve");
@@ -292,7 +302,7 @@ function renderEq(bands, onEdit) {
       ...bands.map((band) => el("li", {}, band.name))));
 }
 
-// `onEdit(param, value)` is set in the sandbox; each param carries its storage `index`.
+// `onEdit(param, value)` is set on editable patches; each param carries its storage `index`.
 function renderControls(params, onEdit) {
   const bands = params.filter(isEqBand);
   const others = bands.length >= MIN_EQ_BANDS ? params.filter((p) => !isEqBand(p)) : params;
@@ -307,8 +317,8 @@ function renderControl(param, onEdit) {
   return param.options ? renderSwitch(param, onEdit) : renderKnob(param, onEdit);
 }
 
-// ---------- sandbox editing ----------
-// Changes live only in the server's memory; nothing is ever sent to the pedal.
+// ---------- editing ----------
+// Changes live only in the server's memory until "Save to pedal" writes a user patch.
 
 let effectCatalog = [];
 
@@ -351,13 +361,16 @@ async function editPatch(method, path, body, { rerender = true, focusKey = null 
     renderDetail(patch);
     detailEl.scrollTop = scrollTop;
     if (focusKey) detailEl.querySelector(`[data-focus-key="${focusKey}"]`)?.focus();
+  } else {
+    const bar = renderSaveBar(patch);
+    if (bar) detailEl.querySelector(".save-bar")?.replaceWith(bar);
   }
   if (failure) {
     const note = detailEl.querySelector(".edit-error");
     note.textContent = `Couldn't apply the change: ${failure.message}`;
     note.hidden = false;
   }
-  getJson("/api/patches").then(renderList).catch(() => {});
+  getJson("/api/patches").then(updateList).catch(() => {});
 }
 
 function toolButton(label, title, focusKey, onclick, { disabled = false, extraClass = "" } = {}) {
@@ -423,7 +436,7 @@ function renderStompTools(fx, patch) {
 }
 
 function renderEffect(fx, patch) {
-  const editable = patch.sandbox;
+  const editable = patch.editable;
   const top = editable
     ? el("div", { class: "stomp-top" },
         el("span", { class: "stomp-position" }, `#${fx.position}`),
@@ -465,7 +478,7 @@ function renderEffect(fx, patch) {
 }
 
 function renderAddSlot(patch) {
-  if (!patch.sandbox || patch.factory || patch.chain.length >= patch.max_effects) return null;
+  if (!patch.editable || patch.factory || patch.chain.length >= patch.max_effects) return null;
   return el("li", { class: "stomp is-add" },
     el("button", {
       type: "button",
@@ -475,10 +488,10 @@ function renderAddSlot(patch) {
     }, "+ Add effect slot"));
 }
 
-// User patches in the sandbox get an editable name; Enter or leaving the field saves it.
+// User patches get an editable name; Enter or leaving the field saves it.
 function renderName(patch) {
   const name = patch.name ?? "(unreadable)";
-  if (!patch.sandbox || patch.factory || patch.name == null) return el("h2", {}, name);
+  if (!patch.editable || patch.factory || patch.name == null) return el("h2", {}, name);
   const input = el("input", {
     class: "name-input",
     value: name,
@@ -500,15 +513,73 @@ function renderName(patch) {
   return el("h2", {}, input);
 }
 
-function renderSandboxNote(patch) {
-  if (!patch.sandbox) return null;
+function renderEditNote(patch) {
+  if (!patch.editable) return null;
   const text = patch.factory
     ? "Factory patch: effects can be switched on/off, reordered and adjusted, but the patch " +
       "can't be renamed and its effects can't be added, removed or replaced."
     : "Rename the patch, add effect slots, pick their effects and adjust them.";
-  return el("p", { class: "sandbox-note" },
-    el("strong", {}, "Sandbox · "), text,
-    " Changes stay in memory only and are lost on Refresh or restart.");
+  if (patch.sandbox) {
+    return el("p", { class: "sandbox-note" },
+      el("strong", {}, "Sandbox · "), text,
+      " Changes stay in memory only and are lost on Refresh or restart.");
+  }
+  const saving = patch.savable
+    ? " Nothing reaches the pedal until you press Save to pedal."
+    : " Factory patches can't be saved to the pedal: changes stay here only.";
+  return el("p", { class: "sandbox-note" }, text, saving);
+}
+
+// Live patches: write the edits to the pedal (user slots), or read the slot again to drop them.
+function renderSaveBar(patch) {
+  if (patch.sandbox || !patch.editable) return null;
+  const slot = patch.slot;
+  const status = el("span", { class: "save-status", role: "status" },
+    patch.unsaved ? "Unsaved changes" : "");
+  const buttons = [];
+
+  async function run(button, busyLabel, path, doneText) {
+    const label = button.textContent;
+    for (const b of buttons) b.disabled = true;
+    button.textContent = busyLabel;
+    try {
+      const updated = await sendJson("POST", `/api/patches/${slot}/${path}`);
+      if (selectedSlot !== slot) return;
+      renderDetail(updated);
+      detailEl.querySelector(".save-status").textContent = doneText;
+      getJson("/api/patches").then(updateList).catch(() => {});
+    } catch (error) {
+      button.textContent = label;
+      for (const b of buttons) b.disabled = false;
+      const note = detailEl.querySelector(".edit-error");
+      note.textContent = `Couldn't ${label.toLowerCase()}: ${error.message}`;
+      note.hidden = false;
+    }
+  }
+
+  if (patch.savable) {
+    const save = el("button", {
+      type: "button",
+      class: "save-button",
+      disabled: patch.unsaved ? null : "",
+      title: "Write this patch to its slot on the pedal",
+      onclick: () => {
+        if (!confirm(`Write "${patch.name}" to slot ${slotLabel(slot)} on the pedal? ` +
+            "This replaces what the slot holds now.")) return;
+        run(save, "Saving…", "save", `Saved to slot ${slotLabel(slot)} on the pedal`);
+      },
+    }, "Save to pedal");
+    buttons.push(save);
+  }
+  const discard = el("button", {
+    type: "button",
+    class: "discard-button",
+    disabled: patch.unsaved ? null : "",
+    title: "Read this slot from the pedal again, dropping the changes",
+    onclick: () => run(discard, "Reading…", "revert", "Changes discarded"),
+  }, "Discard changes");
+  buttons.push(discard);
+  return el("div", { class: "save-bar" }, ...buttons, status);
 }
 
 function renderDetail(patch) {
@@ -525,7 +596,8 @@ function renderDetail(patch) {
         patch.checksum_ok ? null : el("span", { class: "warning" }, " · checksum mismatch")),
       patch.description ? el("p", { class: "detail-description" }, patch.description) : null,
       patch.error ? el("p", { class: "warning" }, patch.error) : null,
-      renderSandboxNote(patch),
+      renderEditNote(patch),
+      renderSaveBar(patch),
       el("p", { class: "warning edit-error", role: "alert", hidden: "" })),
     el("ol", { class: "chain", "aria-label": "Effect chain, in signal order" },
       ...patch.chain.map((fx) => renderEffect(fx, patch)), renderAddSlot(patch)),
@@ -584,8 +656,8 @@ function render(state, port) {
 
   if (isLive(state)) {
     modal.hidden = true;
-    // The sandbox's effect picker needs the catalog before the first patch is drawn.
-    (state === "sandbox" ? loadEffectCatalog() : Promise.resolve()).then(() => loadList());
+    // The effect picker needs the catalog before the first patch is drawn.
+    loadEffectCatalog().then(() => loadList());
   } else {
     modalTitle.textContent = message.title;
     modalBody.innerHTML = message.body;

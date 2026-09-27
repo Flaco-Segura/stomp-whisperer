@@ -29,6 +29,20 @@ Then open http://127.0.0.1:8000 in your browser. Stop the server with `Ctrl+C`.
 If the pedal is not connected, the page shows a "Connect your pedal" modal that closes by
 itself as soon as the pedal is detected over USB.
 
+#### Editing and saving patches
+
+Patches can be edited in the browser (see the list under Sandbox mode below), but changes stay
+in the server's memory — marked with an amber • in the patch list — until you press
+**Save to pedal**. That button, available on user patches only (slots 86–100), asks for
+confirmation, writes the slot and reads it back to check it. **Discard changes** reads the
+slot from the pedal again. Factory patches (slots 1–85) can be tweaked but never saved.
+
+Before trying new kinds of edits, back up every slot:
+
+```bash
+stomp-whisperer list --save dumps/backup-YYYY-MM-DD
+```
+
 #### Sandbox mode (no pedal)
 
 ```bash
@@ -41,8 +55,8 @@ the status pill reads "Sandbox (no pedal)". Nothing is sent over MIDI, so effect
 parameters come only from the cache (`~/.cache/stomp-whisperer/effects.json`); effects not
 seen before show just their ID. Slots missing from the dumps are shown as empty.
 
-The sandbox is also where patches can be edited, in memory only (Refresh or a restart
-brings back the dumps; nothing is ever written to the pedal or to the dump files):
+In the sandbox, edits stay in memory only (Refresh or a restart brings back the dumps;
+nothing is ever written to the pedal or to the dump files). The same edits work live:
 
 - switch effects on/off, reorder them (◀ ▶) and turn their knobs, switches and EQ faders;
 - on user patches (slots 86–100) also rename the patch (two lines of 14 characters, as on
@@ -67,8 +81,9 @@ stomp-whisperer effects [--all]      # read every effect's name and parameters i
 
 ## Status
 
-Read-only SysEx communication with the pedal is working end-to-end, verified against
-real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
+SysEx communication with the pedal is working end-to-end, verified against real hardware
+(a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`): reading every patch and effect,
+and writing patches to user slots.
 
 **Done:**
 - Project scaffolding: `src/stomp_whisperer` package, `pyproject.toml`, `pytest` tests,
@@ -127,12 +142,19 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
   only applies when the parameter's range matches the one it was read from. The web UI shows
   each value as the pedal would, with its range in the tooltip.
 
+- Patch writing (`stomp_whisperer.patch.encode_patch`, `protocol.patch_upload`,
+  `Pedal.upload_patch`): the upload message (command `0x45`) has the same layout as the
+  pedal's reply to a slot download; for all 100 slots of a real pedal the message built from
+  the downloaded patch equals that reply byte for byte, and `encode_patch(parse_patch(d))`
+  rebuilds each patch exactly. PRM2 fields that name effect slots follow their effects when
+  these are moved or removed; its preamp bitfield marks exactly the PREAMP-group effects.
+  Verified on the pedal: rewriting a slot unchanged, toggling an effect, and a new patch with a
+  name, three effects and a preamp, reordered. Only patch slots are written, never files.
+
 **Next steps (in order):**
 1. Drag-and-drop to rearrange effect chains in the UI (vendored SortableJS), still as a
    read-only preview.
-2. Possible future extension, deliberately on hold: patch *writing* (composing patches from the
-   pedal's own built-in effect library only — never importing effect binaries from other
-   Zoom models, see Known Risks below).
+2. "Save as": write an edited patch to a different user slot.
 
 ## Technical Requirements
 
@@ -157,4 +179,4 @@ real hardware (a MS-50G+ over USB, seen on Linux as `ZOOM MS Plus Series`).
 
 ## Known Risks
 
-- Writing effect/patch data to the pedal carries a documented risk of leaving it unresponsive if malformed or incompatible data is sent (see project notes / commit history for details). Read-only features (listing existing patches) are considered low-risk and are the first development milestone. Write features will only compose patches from the pedal's own built-in effect library — never import binaries from other Zoom models.
+- Writing effect/patch data to the pedal carries a documented risk of leaving it unresponsive if malformed or incompatible data is sent (see project notes / commit history for details). Writing is therefore limited to patch slots (never effect or system files), user slots only, composed from the pedal's own built-in effect library — never importing binaries from other Zoom models — and every write is read back and compared.

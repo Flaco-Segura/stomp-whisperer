@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from stomp_whisperer.effects import EffectInfo, EffectLibrary, Param
+from stomp_whisperer.pedal import PatchInfo
 from stomp_whisperer.web import app as web_app
 
 client = TestClient(web_app.app)
@@ -163,11 +164,92 @@ def test_list_effects():
         {"id": "03000080", "name": "DYN Drive", "group": "DRIVE"}]
 
 
-def test_editing_needs_sandbox(monkeypatch):
-    monkeypatch.setattr(web_app, "read_all_slots", _fake_slots)
+def test_live_edits_stay_in_memory_until_saved(live_user_slot):
+    body = client.patch(f"/api/patches/{live_user_slot}/effects/1", json={"enabled": True}).json()
+    assert body["chain"][0]["enabled"] is True
+    assert body["unsaved"] is True and body["savable"] is True
+    assert client.get("/api/patches").json()[live_user_slot - 1]["unsaved"] is True
+
+
+class FakePedal:
+    """Stands in for the MIDI pedal: slots are byte strings, writes are recorded."""
+
+    def __init__(self, slots: dict[int, bytes]):
+        self.slots = slots
+        self.uploads = []
+
+    def __call__(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        pass
+
+    def pc_mode_on(self):
+        pass
+
+    def pc_mode_off(self):
+        pass
+
+    def patch_check(self):
+        return PatchInfo(count=100, patch_size=848, bank_size=10)
+
+    def download_patch(self, location, bank_size):
+        return bytearray(self.slots[location]), True
+
+    def upload_patch(self, location, info, data):
+        self.uploads.append((location, data))
+        self.slots[location] = data
+        return data
+
+
+@pytest.fixture
+def live_user_slot(monkeypatch):
+    """Slot 86 (the first user patch) read live from a fake pedal."""
+    def slots():
+        drive_echo = _fake_slots()[0]
+        return [web_app._slot_entry(n, b"", True) for n in range(1, 86)] + [
+            {**drive_echo, "slot": 86}]
+    monkeypatch.setattr(web_app, "read_all_slots", slots)
     web_app.cache.clear()
-    assert client.patch("/api/patches/1/effects/1", json={"enabled": True}).status_code == 403
-    assert client.post("/api/patches/1/effects").status_code == 403
+    return 86
+
+
+def test_save_writes_the_edited_patch(monkeypatch, live_user_slot, fake_effects):
+    fake_effects.library.add(EffectInfo(id=0x08000060, file="DELAY.ZD2", name="Delay",
+                                        group="DELAY", params=[]))
+    pedal = FakePedal({})
+    monkeypatch.setattr(web_app, "Pedal", pedal)
+    client.patch(f"/api/patches/{live_user_slot}/effects/1", json={"enabled": True})
+    body = client.post(f"/api/patches/{live_user_slot}/save").json()
+    assert body["unsaved"] is False
+    [(location, data)] = pedal.uploads
+    assert location == live_user_slot
+    assert [(e.id, e.enabled) for e in web_app.parse_patch(data).effects] == [
+        (0x03000080, True), (0x08000060, True)]
+    # Discarding reads the slot back from the pedal.
+    client.patch(f"/api/patches/{live_user_slot}/effects/1", json={"enabled": False})
+    body = client.post(f"/api/patches/{live_user_slot}/revert").json()
+    assert body["unsaved"] is False and body["chain"][0]["enabled"] is True
+
+
+def test_save_waits_for_unknown_effects(monkeypatch, live_user_slot):
+    monkeypatch.setattr(web_app, "Pedal", FakePedal({}))
+    assert client.post(f"/api/patches/{live_user_slot}/save").status_code == 409
+
+
+def test_factory_patches_are_never_saved(monkeypatch, live_user_slot):
+    pedal = FakePedal({})
+    monkeypatch.setattr(web_app, "Pedal", pedal)
+    assert client.post("/api/patches/1/save").status_code == 403
+    assert pedal.uploads == []
+
+
+def test_sandbox_never_saves(user_patch):
+    assert client.post(f"/api/patches/{user_patch}/save").status_code == 403
+    assert client.get(f"/api/patches/{user_patch}").json()["savable"] is False
 
 
 def test_add_and_choose_effect(user_patch):

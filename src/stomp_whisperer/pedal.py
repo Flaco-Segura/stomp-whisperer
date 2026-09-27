@@ -122,11 +122,40 @@ class Pedal:
             raise TimeoutError("Pedal did not respond to patch_download_current")
         return self._decode_patch_reply(reply, header_len=8)
 
-    def download_patch(self, location: int, bank_size: int) -> tuple[bytearray, bool]:
+    def download_patch_raw(self, location: int, bank_size: int) -> bytearray:
+        """The pedal's whole SysEx reply to patch_download (body, without F0/F7)."""
         reply = self._send_recv(protocol.patch_download(location, bank_size))
         if reply is None:
             raise TimeoutError(f"Pedal did not respond to patch_download({location})")
-        return self._decode_patch_reply(reply, header_len=12)
+        return reply
+
+    def download_patch(self, location: int, bank_size: int) -> tuple[bytearray, bool]:
+        return self._decode_patch_reply(self.download_patch_raw(location, bank_size), header_len=12)
+
+    def upload_patch(self, location: int, info: PatchInfo, patch: bytes) -> bytes:
+        """Store PTCF `patch` bytes in slot `location`, then read the slot back to check it.
+
+        The slot is sent padded with zeros to its full size, as the pedal sends it.
+        Only the first `length` bytes (from the PTCF header) are compared: the pedal
+        fills the rest of a slot with whatever its buffer held, which varies between reads.
+        Returns the slot as read back; raises IOError if it doesn't hold `patch`.
+        """
+        if not 1 <= location <= info.count:
+            raise ValueError(f"No patch slot {location}")
+        if not patch or len(patch) > info.patch_size:
+            raise ValueError(f"A patch must be 1 to {info.patch_size} bytes, not {len(patch)}")
+        length = int.from_bytes(patch[4:8], "little")
+        if patch[:4] != b"PTCF" or not 8 <= length <= len(patch):
+            raise ValueError("Not a PTCF patch")
+        data = bytes(patch).ljust(info.patch_size, b"\x00")
+        reply = self._send_recv(protocol.patch_upload(location, info.bank_size, data))
+        if reply is None:
+            raise TimeoutError(f"Pedal did not respond to patch_upload({location})")
+        stored, checksum_ok = self.download_patch(location, info.bank_size)
+        if not checksum_ok or bytes(stored[:length]) != bytes(patch[:length]):
+            raise IOError(f"Slot {location} doesn't hold the patch after writing it "
+                          f"(pedal replied {bytes(reply).hex(' ')})")
+        return bytes(stored)
 
     # ---------- files ----------
 
