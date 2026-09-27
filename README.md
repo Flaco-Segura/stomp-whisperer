@@ -61,7 +61,8 @@ seen before show just their ID. Slots missing from the dumps are shown as empty.
 In the sandbox, edits stay in memory only (Refresh or a restart brings back the dumps;
 nothing is ever written to the pedal or to the dump files). The same edits work live:
 
-- switch effects on/off, reorder them (◀ ▶) and turn their knobs, switches and EQ faders;
+- switch effects on/off, reorder them (drag them by their ⠿ grip, or use ◀ ▶) and turn their
+  knobs, switches and EQ faders;
 - on user patches (slots 86–100) also rename the patch (two lines of 14 characters, as on
   the pedal's screen), add effect slots (up to 6), pick their effect from the library and
   remove slots. Factory patches (slots 1–85) keep their name and effects.
@@ -154,8 +155,10 @@ and writing patches to user slots.
   Verified on the pedal: rewriting a slot unchanged, toggling an effect, and a new patch with a
   name, three effects and a preamp, reordered. Only patch slots are written, never files.
 
-**Next steps (in order):**
-1. Drag-and-drop to rearrange effect chains in the UI (vendored SortableJS).
+- Effects are reordered by dragging them with SortableJS (1.15.7, MIT), vendored as
+  `web/static/Sortable.min.js` so there's still no build step or CDN.
+
+**Next steps:** none planned right now.
 
 ## Technical Requirements
 

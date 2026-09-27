@@ -360,6 +360,19 @@ body {
 .save-as button:disabled { opacity: 0.4; cursor: default; }
 .save-as-note { flex-basis: 100%; margin: 0; color: var(--ink-dim); }
 .unsaved-dot { color: var(--amber); }
+
+.stomp-grip {
+  margin-right: -0.2rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--ink-dim);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.stomp-grip:hover { color: var(--amber); }
+.stomp.is-drag-chosen .stomp-grip { cursor: grabbing; }
+.stomp.is-drag-ghost { opacity: 0.35; outline: 1px dashed var(--amber); }
 .name-input {
   width: 100%;
   max-width: 34rem;

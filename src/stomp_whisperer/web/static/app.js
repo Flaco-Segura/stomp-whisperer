@@ -439,6 +439,7 @@ function renderEffect(fx, patch) {
   const editable = patch.editable;
   const top = editable
     ? el("div", { class: "stomp-top" },
+        el("span", { class: "stomp-grip", title: "Drag to move in the chain", "aria-hidden": "true" }, "⠿"),
         el("span", { class: "stomp-position" }, `#${fx.position}`),
         fx.group ? el("span", { class: "stomp-group" }, fx.group) : null,
         ...renderStompTools(fx, patch))
@@ -642,6 +643,26 @@ function renderSaveBar(patch) {
   return bar;
 }
 
+// Drag effects by their grip to reorder the chain (the ◀ ▶ buttons do the same from the
+// keyboard). Dropping sends one move; the detail is then redrawn from the server's answer.
+function makeSortable(patch, chain) {
+  if (!patch.editable || patch.chain.length < 2 || typeof Sortable === "undefined") return chain;
+  Sortable.create(chain, {
+    handle: ".stomp-grip",
+    draggable: ".stomp:not(.is-add)",
+    animation: 150,
+    ghostClass: "is-drag-ghost",
+    chosenClass: "is-drag-chosen",
+    onMove: (event) => !event.related.classList.contains("is-add"),
+    onEnd: (event) => {
+      const from = event.oldDraggableIndex + 1;
+      const to = event.newDraggableIndex + 1;
+      if (from !== to) editPatch("POST", `/effects/${from}/move`, { to });
+    },
+  });
+  return chain;
+}
+
 function renderDetail(patch) {
   const effects = patch.chain.filter((fx) => !fx.empty);
   const summary = effects.length === 0 ? "No effects"
@@ -659,8 +680,8 @@ function renderDetail(patch) {
       renderEditNote(patch),
       renderSaveBar(patch),
       el("p", { class: "warning edit-error", role: "alert", hidden: "" })),
-    el("ol", { class: "chain", "aria-label": "Effect chain, in signal order" },
-      ...patch.chain.map((fx) => renderEffect(fx, patch)), renderAddSlot(patch)),
+    makeSortable(patch, el("ol", { class: "chain", "aria-label": "Effect chain, in signal order" },
+      ...patch.chain.map((fx) => renderEffect(fx, patch)), renderAddSlot(patch))),
     effects.some((fx) => fx.info_pending) ? el("p", { class: "detail-note" },
       "The first time, effect names are read from the pedal's own effect files " +
       "(a few seconds each). They're remembered after that.") : null,
