@@ -526,11 +526,12 @@ function renderEditNote(patch) {
   }
   const saving = patch.savable
     ? " Nothing reaches the pedal until you press Save to pedal."
-    : " Factory patches can't be saved to the pedal: changes stay here only.";
+    : " Factory patches can't be overwritten: use Save as to keep your version in a user slot.";
   return el("p", { class: "sandbox-note" }, text, saving);
 }
 
-// Live patches: write the edits to the pedal (user slots), or read the slot again to drop them.
+// Live patches: write the edits to the pedal (to their own user slot, or "Save as" another
+// one), or read the slot again to drop them.
 function renderSaveBar(patch) {
   if (patch.sandbox || !patch.editable) return null;
   const slot = patch.slot;
@@ -538,19 +539,23 @@ function renderSaveBar(patch) {
     patch.unsaved ? "Unsaved changes" : "");
   const buttons = [];
 
-  async function run(button, busyLabel, path, doneText) {
+  // Runs a save/revert; `body.to` (Save as) moves the view to the slot written.
+  async function run(button, busyLabel, path, doneText, body = null) {
     const label = button.textContent;
-    for (const b of buttons) b.disabled = true;
+    const controls = [...detailEl.querySelectorAll(".save-bar button, .save-as button")]
+      .map((b) => [b, b.disabled]);
+    for (const [b] of controls) b.disabled = true;
     button.textContent = busyLabel;
     try {
-      const updated = await sendJson("POST", `/api/patches/${slot}/${path}`);
+      const updated = await sendJson("POST", `/api/patches/${slot}/${path}`, body);
       if (selectedSlot !== slot) return;
-      renderDetail(updated);
+      if (updated.slot === slot) renderDetail(updated);
+      else await selectSlot(updated.slot, { scroll: true });
       detailEl.querySelector(".save-status").textContent = doneText;
       getJson("/api/patches").then(updateList).catch(() => {});
     } catch (error) {
       button.textContent = label;
-      for (const b of buttons) b.disabled = false;
+      for (const [b, disabled] of controls) b.disabled = disabled;
       const note = detailEl.querySelector(".edit-error");
       note.textContent = `Couldn't ${label.toLowerCase()}: ${error.message}`;
       note.hidden = false;
@@ -579,7 +584,62 @@ function renderSaveBar(patch) {
     onclick: () => run(discard, "Reading…", "revert", "Changes discarded"),
   }, "Discard changes");
   buttons.push(discard);
-  return el("div", { class: "save-bar" }, ...buttons, status);
+
+  const saveAs = el("button", {
+    type: "button",
+    class: "save-as-button",
+    title: "Write this patch, with its changes, to another user slot on the pedal",
+    "aria-expanded": "false",
+    onclick: () => toggleSaveAs(),
+  }, "Save as…");
+  buttons.push(saveAs);
+  const bar = el("div", { class: "save-bar" }, ...buttons, status);
+
+  async function toggleSaveAs() {
+    const open = detailEl.querySelector(".save-as");
+    if (open) {
+      open.remove();
+      saveAs.setAttribute("aria-expanded", "false");
+      return;
+    }
+    let patches;
+    try {
+      patches = await getJson("/api/patches");
+    } catch (error) {
+      status.textContent = `Couldn't list the slots: ${error.message}`;
+      return;
+    }
+    const targets = patches.filter((p) => p.slot >= patch.first_user_slot && p.slot !== slot);
+    // Suggest the first empty-looking slot, so nothing is overwritten by accident.
+    const suggested = targets.find((p) => p.effect_count === 0 || p.name === "Empty") ?? targets[0];
+    const describe = (p) => `${slotLabel(p.slot)} · ${p.name ?? "(unreadable)"}${p.unsaved ? " •" : ""}`;
+    const select = el("select", { class: "save-as-slot", "aria-label": "Slot to save to" },
+      ...targets.map((p) => el("option", { value: p.slot, selected: p === suggested ? "" : null },
+        describe(p))));
+    const write = el("button", {
+      type: "button",
+      class: "save-button",
+      onclick: () => {
+        const target = targets.find((p) => p.slot === Number(select.value));
+        const replaced = target.name ? `, replacing "${target.name}"` : "";
+        const lost = target.unsaved ? " Its own unsaved changes will be lost." : "";
+        if (!confirm(`Write "${patch.name}" to slot ${slotLabel(target.slot)} on the pedal` +
+            `${replaced}?${lost}`)) return;
+        run(write, "Saving…", "save", `Saved to slot ${slotLabel(target.slot)} on the pedal`,
+          { to: target.slot });
+      },
+    }, "Save");
+    const cancel = el("button", { type: "button", onclick: () => toggleSaveAs() }, "Cancel");
+    const form = el("div", { class: "save-as", role: "group", "aria-label": "Save as another slot" },
+      el("label", {}, "Save to slot ", select), write, cancel,
+      el("p", { class: "save-as-note" },
+        "The changes go to the new slot; this one goes back to what the pedal holds."));
+    bar.after(form);
+    saveAs.setAttribute("aria-expanded", "true");
+    select.focus();
+  }
+
+  return bar;
 }
 
 function renderDetail(patch) {

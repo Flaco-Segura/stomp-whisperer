@@ -304,6 +304,7 @@ def _detail_json(entry: dict) -> dict:
     body["factory"] = entry["slot"] <= FACTORY_SLOTS
     body["editable"] = patch is not None
     body["savable"] = not source.sandbox and entry["slot"] > FACTORY_SLOTS and patch is not None
+    body["first_user_slot"] = FACTORY_SLOTS + 1
     body["max_effects"] = MAX_EFFECTS
     body["chain"] = [_effect_json(i, e) for i, e in enumerate(patch.effects, 1)] if patch else []
     return body
@@ -530,11 +531,23 @@ def _reload_entry(entry: dict, data: bytes, checksum_ok: bool) -> None:
     entry.update(_slot_entry(entry["slot"], data, checksum_ok))
 
 
+class SaveTarget(BaseModel):
+    to: int | None = None  # another slot to write the patch to ("Save as"); default: its own
+
+
 @app.post("/api/patches/{slot}/save")
-def save_patch(slot: int) -> dict:
-    """Write the slot's patch, as edited, to the pedal; then show it as read back."""
+def save_patch(slot: int, target: SaveTarget | None = None) -> dict:
+    """Write the slot's patch, as edited, to the pedal; then show it as read back.
+
+    With a target slot ("Save as") the patch goes there instead, the edits go with it
+    and the source slot is read from the pedal again; the target's detail is returned.
+    """
     entry = _live_entry(slot)
-    if slot <= FACTORY_SLOTS:
+    to = slot if target is None or target.to is None else target.to
+    slots = _cached_slots()
+    if not 1 <= to <= len(slots):
+        raise HTTPException(status_code=404, detail=f"No patch slot {to}")
+    if to <= FACTORY_SLOTS:
         raise HTTPException(status_code=403, detail="Only user patches (slots "
                                                     f"{FACTORY_SLOTS + 1}+) can be saved to the pedal")
     patch: Patch | None = entry["patch"]
@@ -547,9 +560,17 @@ def save_patch(slot: int) -> dict:
         data = encode_patch(patch, _preamp_flags(patch))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    stored = _pedal_call(lambda pedal, info: pedal.upload_patch(slot, info, data))
-    _reload_entry(entry, stored, True)
-    return _detail_json(entry)
+
+    def write(pedal, info):
+        stored = pedal.upload_patch(to, info, data)
+        source_data = None if to == slot else pedal.download_patch(slot, info.bank_size)
+        return stored, source_data
+    stored, source_data = _pedal_call(write)
+    target_entry = slots[to - 1]
+    _reload_entry(target_entry, stored, True)
+    if source_data is not None:
+        _reload_entry(entry, bytes(source_data[0]), source_data[1])
+    return _detail_json(target_entry)
 
 
 @app.post("/api/patches/{slot}/revert")

@@ -235,6 +235,33 @@ def test_save_writes_the_edited_patch(monkeypatch, live_user_slot, fake_effects)
     assert body["unsaved"] is False and body["chain"][0]["enabled"] is True
 
 
+def test_save_as_another_slot(monkeypatch, fake_effects):
+    def slots():
+        drive_echo = _fake_slots()[0]
+        return [{**drive_echo, "slot": n} if n in (21, 86) else web_app._slot_entry(n, b"", True)
+                for n in range(1, 90)]
+    monkeypatch.setattr(web_app, "read_all_slots", slots)
+    web_app.cache.clear()
+    fake_effects.library.add(EffectInfo(id=0x08000060, file="DELAY.ZD2", name="Delay",
+                                        group="DELAY", params=[]))
+    original = web_app.encode_patch(web_app.cache.slots()[20]["patch"])
+    pedal = FakePedal({21: original})
+    monkeypatch.setattr(web_app, "Pedal", pedal)
+
+    # A factory patch, tweaked, goes to a user slot; the factory one reads as before.
+    client.patch("/api/patches/21/effects/1", json={"enabled": True})
+    body = client.post("/api/patches/21/save", json={"to": 88}).json()
+    assert body["slot"] == 88 and body["unsaved"] is False
+    assert body["chain"][0]["enabled"] is True
+    assert [location for location, _data in pedal.uploads] == [88]
+    source = client.get("/api/patches/21").json()
+    assert source["unsaved"] is False and source["chain"][0]["enabled"] is False
+
+    assert client.post("/api/patches/21/save", json={"to": 85}).status_code == 403
+    assert client.post("/api/patches/21/save", json={"to": 90}).status_code == 404
+    assert len(pedal.uploads) == 1
+
+
 def test_save_waits_for_unknown_effects(monkeypatch, live_user_slot):
     monkeypatch.setattr(web_app, "Pedal", FakePedal({}))
     assert client.post(f"/api/patches/{live_user_slot}/save").status_code == 409

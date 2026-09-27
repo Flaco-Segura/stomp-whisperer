@@ -35,7 +35,10 @@ Patches can be edited in the browser (see the list under Sandbox mode below), bu
 in the server's memory — marked with an amber • in the patch list — until you press
 **Save to pedal**. That button, available on user patches only (slots 86–100), asks for
 confirmation, writes the slot and reads it back to check it. **Discard changes** reads the
-slot from the pedal again. Factory patches (slots 1–85) can be tweaked but never saved.
+slot from the pedal again. **Save as…** writes the patch, with its changes, to another user
+slot of your choice (it suggests an empty one); the original slot goes back to what the pedal
+holds. Factory patches (slots 1–85) are never overwritten, but Save as can copy one, tweaked
+or not, into a user slot.
 
 Before trying new kinds of edits, back up every slot:
 
@@ -152,9 +155,7 @@ and writing patches to user slots.
   name, three effects and a preamp, reordered. Only patch slots are written, never files.
 
 **Next steps (in order):**
-1. Drag-and-drop to rearrange effect chains in the UI (vendored SortableJS), still as a
-   read-only preview.
-2. "Save as": write an edited patch to a different user slot.
+1. Drag-and-drop to rearrange effect chains in the UI (vendored SortableJS).
 
 ## Technical Requirements
 

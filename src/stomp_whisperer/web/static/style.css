@@ -327,6 +327,38 @@ body {
 .save-bar .discard-button:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
 .save-bar button:disabled { opacity: 0.4; cursor: default; }
 .save-status { font-size: 0.8rem; color: var(--ink-dim); }
+.save-as {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 0.6rem;
+  font-size: 0.8rem;
+}
+.save-as-slot {
+  margin-left: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 0.4rem;
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+}
+.save-as button {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid var(--panel-line);
+  border-radius: 999px;
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+.save-as .save-button { border-color: var(--amber); color: #1a1407; background: var(--amber); font-weight: 600; }
+.save-as button:disabled { opacity: 0.4; cursor: default; }
+.save-as-note { flex-basis: 100%; margin: 0; color: var(--ink-dim); }
 .unsaved-dot { color: var(--amber); }
 .name-input {
   width: 100%;
