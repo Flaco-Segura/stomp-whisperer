@@ -94,6 +94,18 @@ def cmd_effects(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_golden(args: argparse.Namespace) -> int:
+    from .golden import export
+
+    try:
+        count = export(args.dumps, args.out, args.bank_size)
+    except FileNotFoundError as exc:
+        print(f"Error: {exc} (save them with `stomp-whisperer list --save DIR`)", file=sys.stderr)
+        return 1
+    print(f"Golden files for {count} patches written to {args.out}")
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -128,6 +140,16 @@ def build_parser() -> argparse.ArgumentParser:
     effects_parser.add_argument("--all", action="store_true",
                                 help="Read effects already in the library again too")
     effects_parser.set_defaults(func=cmd_effects)
+
+    golden_parser = subparsers.add_parser(
+        "golden", help="Export parse/encode results of the dumps as test vectors for a port")
+    golden_parser.add_argument("--dumps", type=Path, default=Path("dumps"), metavar="DIR",
+                               help="Directory with patch_NNN.bin dumps (default: dumps)")
+    golden_parser.add_argument("--out", type=Path, default=Path("golden"), metavar="DIR",
+                               help="Output directory (default: golden)")
+    golden_parser.add_argument("--bank-size", type=int, default=10,
+                               help="Patches per bank, for the SysEx slot addresses (default: 10)")
+    golden_parser.set_defaults(func=cmd_golden)
 
     serve_parser = subparsers.add_parser("serve", help="Start the local web UI")
     serve_parser.add_argument("--host", default="127.0.0.1")

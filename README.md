@@ -81,7 +81,15 @@ stomp-whisperer info                 # connect and print patch storage info
 stomp-whisperer current              # dump the currently active patch (hex)
 stomp-whisperer list [--save DIR]    # list every patch slot; optionally save raw .bin dumps
 stomp-whisperer effects [--all]      # read every effect's name and parameters into the library
+stomp-whisperer golden [--dumps DIR] [--out DIR]   # export test vectors for a port (no pedal)
 ```
+
+`golden` writes, for each `patch_NNN.bin` dump, its parse, its re-encoding, the SysEx
+messages built from it and a set of edits (toggle, parameters, rename, reorder, remove, add)
+with the bytes `encode_patch` produces for each. A port of the patch code (e.g. to
+TypeScript) can replay them and must match byte for byte; the format is described in
+`src/stomp_whisperer/golden.py`. The output holds your patches, so it's git-ignored like
+`dumps/`.
 
 ## Status
 
